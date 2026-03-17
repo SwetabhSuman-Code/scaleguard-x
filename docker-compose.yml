@@ -1,0 +1,206 @@
+version: "3.9"
+
+# ================================================================
+# ScaleGuard X — Docker Compose Orchestration
+# Run: docker compose up --build
+# ================================================================
+
+x-common-env: &common-env
+  POSTGRES_HOST:      postgres_db
+  POSTGRES_PORT:      "5432"
+  POSTGRES_USER:      scaleguard
+  POSTGRES_PASSWORD:  scaleguard_secret
+  POSTGRES_DB:        scaleguard
+  REDIS_HOST:         redis_queue
+  REDIS_PORT:         "6379"
+  METRICS_STREAM_KEY: metrics_stream
+
+services:
+
+  # ── 1. PostgreSQL ──────────────────────────────────────────────
+  postgres_db:
+    image: postgres:16-alpine
+    container_name: scaleguard-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     scaleguard
+      POSTGRES_PASSWORD: scaleguard_secret
+      POSTGRES_DB:       scaleguard
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./infrastructure/sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scaleguard -d scaleguard"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── 2. Redis ───────────────────────────────────────────────────
+  redis_queue:
+    image: redis:7-alpine
+    container_name: scaleguard-redis
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── 3. API Gateway ─────────────────────────────────────────────
+  api_gateway:
+    build:
+      context: ./api_gateway
+      dockerfile: Dockerfile
+    container_name: scaleguard-api-gateway
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      API_GATEWAY_HOST: api_gateway
+      API_GATEWAY_PORT: "8000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── 4. Metrics Ingestion Service ───────────────────────────────
+  ingestion_service:
+    build:
+      context: ./ingestion_service
+      dockerfile: Dockerfile
+    container_name: scaleguard-ingestion
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      INGESTION_BATCH_SIZE: "100"
+      INGESTION_INTERVAL:   "2"
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+
+  # ── 5. Worker Cluster (initial 2 replicas) ─────────────────────
+  worker_cluster:
+    build:
+      context: ./worker_cluster
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      AGENT_INTERVAL:      "5"
+      API_GATEWAY_HOST:    api_gateway
+      API_GATEWAY_PORT:    "8000"
+    deploy:
+      replicas: 2
+    depends_on:
+      redis_queue:
+        condition: service_healthy
+
+  # ── 6. Metrics Agent (host node agent) ────────────────────────
+  metrics_agent:
+    build:
+      context: ./metrics_agent
+      dockerfile: Dockerfile
+    container_name: scaleguard-agent
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      AGENT_INTERVAL: "5"
+      NODE_ID:        "host-agent-1"
+    depends_on:
+      redis_queue:
+        condition: service_healthy
+
+  # ── 7. Anomaly Detection Engine ────────────────────────────────
+  anomaly_engine:
+    build:
+      context: ./anomaly_engine
+      dockerfile: Dockerfile
+    container_name: scaleguard-anomaly
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      ANOMALY_CPU_THRESHOLD:     "85.0"
+      ANOMALY_LATENCY_THRESHOLD: "500.0"
+      ANOMALY_MEMORY_THRESHOLD:  "90.0"
+      ANOMALY_RUN_INTERVAL:      "10"
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+
+  # ── 8. Prediction Engine ───────────────────────────────────────
+  prediction_engine:
+    build:
+      context: ./prediction_engine
+      dockerfile: Dockerfile
+    container_name: scaleguard-prediction
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      PREDICTION_HORIZON_MINUTES: "10"
+      PREDICTION_HISTORY_MINUTES: "60"
+      PREDICTION_RUN_INTERVAL:    "30"
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+
+  # ── 9. Autoscaler ──────────────────────────────────────────────
+  autoscaler:
+    build:
+      context: ./autoscaler
+      dockerfile: Dockerfile
+    container_name: scaleguard-autoscaler
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      AUTOSCALER_MIN_WORKERS:         "1"
+      AUTOSCALER_MAX_WORKERS:         "8"
+      AUTOSCALER_SCALE_UP_THRESHOLD:  "0.75"
+      AUTOSCALER_SCALE_DOWN_THRESHOLD: "0.35"
+      AUTOSCALER_RUN_INTERVAL:        "15"
+      WORKER_SERVICE_NAME:            "scaleguard-x-worker_cluster"
+    volumes:
+      # Mount Docker socket so autoscaler can manage worker containers
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+
+  # ── 10. Dashboard Frontend ─────────────────────────────────────
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: scaleguard-dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      api_gateway:
+        condition: service_healthy
+
+volumes:
+  pg_data:
+  redis_data:
+
+networks:
+  default:
+    name: scaleguard-x_default
