@@ -42,8 +42,8 @@ A production-grade distributed observability system that collects real-time syst
 
 ```mermaid
 graph TD;
-    Browser[Browser] -->|HTTP :3000| Dashboard[Dashboard (React/Nginx)];
-    Dashboard -->|/api proxy| Gateway[API Gateway (FastAPI :8000)];
+    Browser[Browser] -->|HTTP :3000| Dashboard["Dashboard (React/Nginx)"];
+    Dashboard -->|/api proxy| Gateway["API Gateway (FastAPI :8000)"];
     Gateway -->|asyncpg read| DB[(PostgreSQL)];
     
     Ingestion[Ingestion Service] -->|Batch Write| DB;
