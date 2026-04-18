@@ -1,0 +1,14 @@
+{
+  "target_rps": 1000,
+  "achieved_rps": 0,
+  "total_sent": 0,
+  "total_failed": 18400,
+  "error_rate": 1.0,
+  "error": "No successful metrics",
+  "success": false,
+  "_metadata": {
+    "timestamp": "2026-04-18T14:06:54.770875",
+    "test_name": "throughput_1k_metrics_per_sec",
+    "version": "1.0"
+  }
+}

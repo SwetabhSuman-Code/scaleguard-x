@@ -1,0 +1,27 @@
+"""
+Requirements for benchmark suite
+Install with: pip install -r requirements-benchmark.txt
+"""
+# Async HTTP client
+httpx==0.24.1
+aiohttp==3.9.1
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-benchmark==4.0.0
+
+# Analysis & statistics
+numpy==1.24.3
+scipy==1.11.4
+pandas==2.1.3
+
+# Resource profiling
+psutil==5.9.6
+
+# Advanced analytics (Phase 2)
+prophet==1.1.5
+torch==2.1.0
+
+# Stress testing
+locust==2.17.0

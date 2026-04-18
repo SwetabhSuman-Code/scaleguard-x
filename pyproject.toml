@@ -48,6 +48,7 @@ addopts      = "-v --tb=short --strict-markers"
 markers      = [
   "unit: fast in-process tests (no external deps)",
   "integration: tests that require running containers",
+  "benchmark: performance and load tests",
 ]
 
 # ── coverage ──────────────────────────────────────────────────────

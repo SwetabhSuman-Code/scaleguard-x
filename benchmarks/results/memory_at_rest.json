@@ -1,0 +1,113 @@
+{
+  "test": "memory_at_rest",
+  "description": "Idle system for 10 seconds",
+  "start": {
+    "start_time": 1776521191.9750965,
+    "initial_memory_mb": 48.30859375,
+    "initial_vms_mb": 37.0,
+    "cpu_count": 12
+  },
+  "profile": {
+    "duration_seconds": 9.957174301147461,
+    "total_measurements": 10,
+    "memory": {
+      "initial_mb": 48.30859375,
+      "peak_mb": 48.33203125,
+      "final_mb": 48.33203125,
+      "growth_mb": 0.0234375,
+      "avg_mb": 48.329296875
+    },
+    "cpu": {
+      "avg_percent": 1.56,
+      "peak_percent": 15.6,
+      "min_percent": 0.0
+    },
+    "measurements": [
+      {
+        "elapsed_seconds": 3.528594970703125e-05,
+        "process_memory_mb": 48.30859375,
+        "process_vms_mb": 37.0,
+        "process_cpu_percent": 15.6,
+        "system_memory_percent": 95.4,
+        "system_available_mb": 741.71875
+      },
+      {
+        "elapsed_seconds": 1.1060876846313477,
+        "process_memory_mb": 48.328125,
+        "process_vms_mb": 37.0,
+        "process_cpu_percent": 0.0,
+        "system_memory_percent": 94.5,
+        "system_available_mb": 888.97265625
+      },
+      {
+        "elapsed_seconds": 2.217940330505371,
+        "process_memory_mb": 48.33203125,
+        "process_vms_mb": 37.0,
+        "process_cpu_percent": 0.0,
+        "system_memory_percent": 94.4,
+        "system_available_mb": 893.76953125
+      },
+      {
+        "elapsed_seconds": 3.3201725482940674,
+        "process_memory_mb": 48.33203125,
+        "process_vms_mb": 37.0,
+        "process_cpu_percent": 0.0,
+        "system_memory_percent": 94.5,
+        "system_available_mb": 879.796875
+      },
+      {
+        "elapsed_seconds": 4.427376985549927,
+        "process_memory_mb": 48.33203125,
+        "process_vms_mb": 37.0,
+        "process_cpu_percent": 0.0,
+        "system_memory_percent": 94.6,
+        "system_available_mb": 866.17578125
+      },
+      {
+        "elapsed_seconds": 5.52956223487854,
+        "process_memory_mb": 48.33203125,
+        "process_vms_mb": 37.0,
+        "process_cpu_percent": 0.0,
+        "system_memory_percent": 94.7,
+        "system_available_mb": 849.37890625
+      },
+      {
+        "elapsed_seconds": 6.633114337921143,
+        "process_memory_mb": 48.33203125,
+        "process_vms_mb": 37.0,
+        "process_cpu_percent": 0.0,
+        "system_memory_percent": 94.8,
+        "system_available_mb": 842.3203125
+      },
+      {
+        "elapsed_seconds": 7.739061594009399,
+        "process_memory_mb": 48.33203125,
+        "process_vms_mb": 37.0,
+        "process_cpu_percent": 0.0,
+        "system_memory_percent": 94.9,
+        "system_available_mb": 825.82421875
+      },
+      {
+        "elapsed_seconds": 8.850643396377563,
+        "process_memory_mb": 48.33203125,
+        "process_vms_mb": 37.0,
+        "process_cpu_percent": 0.0,
+        "system_memory_percent": 94.6,
+        "system_available_mb": 872.98828125
+      },
+      {
+        "elapsed_seconds": 9.957174301147461,
+        "process_memory_mb": 48.33203125,
+        "process_vms_mb": 37.0,
+        "process_cpu_percent": 0.0,
+        "system_memory_percent": 94.8,
+        "system_available_mb": 835.3984375
+      }
+    ]
+  },
+  "_metadata": {
+    "timestamp": "2026-04-18T14:06:43.235358",
+    "test_name": "memory_at_rest",
+    "version": "1.0"
+  }
+}

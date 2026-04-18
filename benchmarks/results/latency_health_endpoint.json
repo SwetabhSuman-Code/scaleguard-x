@@ -1,0 +1,20 @@
+{
+  "samples": 1000,
+  "min_ms": 1.42,
+  "p50_ms": 1.86,
+  "p75_ms": 2.12,
+  "p95_ms": 2.61,
+  "p99_ms": 3.21,
+  "p99_9_ms": 3.87,
+  "max_ms": 4.13,
+  "mean_ms": 1.94,
+  "stddev_ms": 0.36,
+  "error_count": 0,
+  "error_types": [],
+  "success": true,
+  "_metadata": {
+    "timestamp": "2026-04-18T14:05:22.900108",
+    "test_name": "latency_health_endpoint",
+    "version": "1.0"
+  }
+}
