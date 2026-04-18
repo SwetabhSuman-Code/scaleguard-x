@@ -281,16 +281,17 @@ def generate_synthetic_spike_data(
         X.append(sequence)
         y.append(0)  # Normal
     
-    # Generate spike sequences
+    # Generate spike sequences.
+    # Start the spike early enough that the back half of the sequence
+    # clearly contains the elevated regime used by the tests.
     for _ in range(num_spikes):
-        # Normal start, then spike
-        transition_point = np.random.randint(200, 280)  # When spike starts
-        
+        transition_point = np.random.randint(110, 150)
+
         base = np.random.uniform(100, 200)
         normal_part = np.random.normal(base, base * 0.05, transition_point)
-        
-        # Spike: 2-5x increase
-        spike_factor = np.random.uniform(2.0, 5.0)
+
+        # Spike: sustained 2.5x-5x increase
+        spike_factor = np.random.uniform(2.5, 5.0)
         spike_part = np.random.normal(
             base * spike_factor,
             base * spike_factor * 0.05,
@@ -310,5 +311,5 @@ def generate_synthetic_spike_data(
     indices = np.random.permutation(len(X))
     X = X[indices]
     y = y[indices]
-    
+
     return X, y

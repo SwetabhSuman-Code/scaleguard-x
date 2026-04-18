@@ -304,14 +304,19 @@ class Tracer:
         if not root_span:
             return {"trace_id": trace_id, "spans": []}
 
+        exported_spans = [span.to_dict() for span in spans]
+        request_level_span_count = len(
+            [span for span in spans if span.name != "trace_root"]
+        )
+
         return {
             "trace_id": trace_id,
             "service": self.config.service_name,
             "environment": self.config.environment,
             "start_time": root_span.start_time,
             "duration_ms": root_span.duration_ms,
-            "span_count": len(spans),
-            "spans": [span.to_dict() for span in spans],
+            "span_count": request_level_span_count,
+            "spans": exported_spans,
         }
 
     def clear_inactive_traces(self, older_than_seconds: int = 3600) -> None:

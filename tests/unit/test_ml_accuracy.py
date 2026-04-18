@@ -136,7 +136,8 @@ class TestMLAccuracy:
         
         # Daily pattern + weekly pattern + noise
         base = np.sin(np.arange(4320) * 2 * np.pi / 288) * 50 + 200
-        weekly = np.tile([5, 10, 15, 20, 25, 0, -5], 4320 // 7 + 1)[:4320]
+        weekly_pattern = np.repeat([5, 10, 15, 20, 25, 0, -5], 288)
+        weekly = np.tile(weekly_pattern, 3)[:4320]
         noise = np.random.normal(0, 10, 4320)
         
         data = pd.DataFrame({

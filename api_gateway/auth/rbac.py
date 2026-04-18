@@ -59,7 +59,7 @@ class Permission(str, Enum):
 class Role:
     """Role definition with permissions."""
     name: str
-    description: str
+    description: str = ""
     permissions: Set[Permission] = field(default_factory=set)
 
     def add_permission(self, permission: Permission) -> None:
@@ -249,7 +249,7 @@ class RBACManager:
         self,
         user_id: str,
         role_names: List[str],
-        required_permission: Permission,
+        required_permission: Optional[Permission] = None,
     ) -> AccessControl:
         """
         Evaluate access for user with given roles.
@@ -271,13 +271,21 @@ class RBACManager:
             else:
                 logger.warning(f"Unknown role requested: {role_name}")
 
-        has_access = access.has_permission(required_permission)
-        log_level = logging.DEBUG if has_access else logging.WARNING
-        logger.log(
-            log_level,
-            f"Access evaluation: user={user_id}, roles={role_names}, "
-            f"required={required_permission.value}, granted={has_access}"
-        )
+        if required_permission is not None:
+            has_access = access.has_permission(required_permission)
+            log_level = logging.DEBUG if has_access else logging.WARNING
+            logger.log(
+                log_level,
+                f"Access evaluation: user={user_id}, roles={role_names}, "
+                f"required={required_permission.value}, granted={has_access}"
+            )
+        else:
+            logger.debug(
+                "Access evaluation: user=%s, roles=%s, permissions=%s",
+                user_id,
+                role_names,
+                sorted(permission.value for permission in access.permissions),
+            )
 
         return access
 

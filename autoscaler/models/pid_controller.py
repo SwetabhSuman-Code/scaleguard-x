@@ -17,7 +17,7 @@ Tuning Strategy (Ziegler-Nichols for autoscaling):
 """
 
 import time
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 from dataclasses import dataclass
 import logging
 
@@ -31,8 +31,8 @@ class PIDConfig:
     ki: float = 0.05         # Integral gain
     kd: float = 0.5          # Derivative gain
     setpoint: float = 70.0   # Target utilization percentage
-    output_min: float = -5.0 # Min scaling action (scale down)
-    output_max: float = 10.0 # Max scaling action (scale up)
+    output_min: float = -5.0 # Most aggressive scale-up action
+    output_max: float = 10.0 # Most aggressive scale-down action
     integral_max: float = 100.0  # Anti-windup threshold
 
 
@@ -61,6 +61,7 @@ class PIDController:
         self.config = config or PIDConfig()
         self.integral_error = 0.0
         self.last_error = 0.0
+        self._has_previous_error = False
         self.last_update_time = time.time()
         self.error_history = []
         logger.info(
@@ -132,9 +133,12 @@ class PIDController:
         i_term = self.config.ki * self.integral_error
 
         # Derivative term: rate of change (dampening for stability)
-        derivative = (error - self.last_error) / dt if dt > 0 else 0
+        derivative = 0.0
+        if self._has_previous_error and dt > 0:
+            derivative = (error - self.last_error) / dt
         d_term = self.config.kd * derivative
         self.last_error = error
+        self._has_previous_error = True
 
         # Calculate raw output
         raw_output = p_term + i_term + d_term
@@ -165,6 +169,7 @@ class PIDController:
         """Reset controller state (integral, history, errors)."""
         self.integral_error = 0.0
         self.last_error = 0.0
+        self._has_previous_error = False
         self.error_history = []
         self.last_update_time = time.time()
         logger.info("PID Controller reset")

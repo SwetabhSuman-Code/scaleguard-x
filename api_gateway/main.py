@@ -17,17 +17,22 @@ import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import asyncpg
 import redis.asyncio as aioredis
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 # ── Shared lib ────────────────────────────────────────────────────
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from api_gateway.auth.jwt_handler import JWTConfig, JWTHandler
+from api_gateway.auth.rbac import Permission, RBACManager
+from api_gateway.middleware.rate_limiter import RateLimiter
+from api_gateway.tracing.tracer import RequestTracer, Tracer, TracingConfig
 from lib.circuit_breaker import CircuitBreakerError, make_postgres_breaker, make_redis_breaker
 from lib.logging_config import clear_log_context, get_logger, set_log_context, setup_json_logging
 from lib.prometheus_metrics import setup_metrics, setup_metrics_server
@@ -51,6 +56,26 @@ REDIS_URL = f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_P
 # ── Circuit breakers ──────────────────────────────────────────────
 _pg_cb    = make_postgres_breaker("api_gateway")
 _redis_cb = make_redis_breaker("api_gateway")
+_jwt_handler = JWTHandler(
+    JWTConfig(
+        secret_key=os.getenv(
+            "JWT_SECRET_KEY",
+            "scaleguard-dev-secret-change-me-32-chars",
+        ),
+        issuer=os.getenv("JWT_ISSUER", "scaleguard-api"),
+        audience=os.getenv("JWT_AUDIENCE", "scaleguard-services"),
+        expiration_minutes=int(os.getenv("JWT_EXPIRATION_MINUTES", "60")),
+    )
+)
+_rbac = RBACManager()
+_rate_limiter = RateLimiter()
+_tracer = Tracer(
+    TracingConfig(
+        service_name="api_gateway",
+        environment=os.getenv("APP_ENV", "development"),
+    )
+)
+_request_tracer = RequestTracer(_tracer)
 
 
 # ── App State ─────────────────────────────────────────────────────
@@ -140,6 +165,58 @@ async def request_id_middleware(request: Request, call_next):
         clear_log_context()
 
 
+@app.middleware("http")
+async def security_and_observability_middleware(request: Request, call_next):
+    """
+    Attach tracing, optional JWT identity extraction, and role-aware rate
+    limiting to every request without forcing auth for read-only demo flows.
+    """
+    request.state.trace_id = _request_tracer.start_request_trace(
+        request.method,
+        request.url.path,
+        dict(request.headers),
+    )
+
+    auth_header = request.headers.get("Authorization", "")
+    user: Dict[str, Any] = {"sub": "anonymous", "roles": ["guest"], "scopes": []}
+    if auth_header:
+        try:
+            token = _jwt_handler.extract_token_from_header(auth_header)
+            claims = _jwt_handler.validate_token(token)
+            user = {
+                "sub": claims.sub,
+                "username": claims.username,
+                "roles": claims.roles or ["guest"],
+                "scopes": claims.scopes or [],
+            }
+        except Exception as exc:
+            _tracer.end_trace()
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"detail": f"Invalid token: {exc}"},
+            )
+
+    request.state.user = _serialize_user_for_state(user)
+    identifier = str(user.get("sub") or (request.client.host if request.client else "anonymous"))
+    role = list(user.get("roles", ["guest"]))[0]
+    allowed, metadata = _rate_limiter.check_limit(identifier, role=role)
+    if not allowed:
+        _tracer.end_trace()
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content={
+                "detail": "Rate limit exceeded",
+                "reset_after": metadata.get("reset_after"),
+            },
+        )
+
+    response: Response = await call_next(request)
+    response.headers["X-Trace-ID"] = request.state.trace_id
+    _request_tracer.add_response_span(response.status_code, 0.0)
+    _tracer.end_trace()
+    return response
+
+
 # ── DB helper ─────────────────────────────────────────────────────
 async def _require_db() -> asyncpg.Pool:
     if state.db_pool is None:
@@ -183,6 +260,10 @@ class PredictionRecord(BaseModel):
     predicted_rps: float
     predicted_cpu: Optional[float] = None
     confidence: Optional[float] = None
+    lower_bound: Optional[float] = None
+    upper_bound: Optional[float] = None
+    spike_probability: Optional[float] = None
+    model_name: Optional[str] = None
 
 
 class ScalingEvent(BaseModel):
@@ -225,6 +306,59 @@ class SystemStatus(BaseModel):
     timestamp: datetime
 
 
+class TokenRequest(BaseModel):
+    """Simple development login payload used to mint JWTs."""
+    username: str
+    subject: Optional[str] = None
+    role: str = "viewer"
+    email: Optional[str] = None
+
+
+class MetricIngestRequest(BaseModel):
+    """Metric sample accepted by the API ingestion endpoint."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    node_id: str = "api-client"
+    cpu_usage: float = Field(validation_alias=AliasChoices("cpu_usage", "cpu"))
+    memory_usage: float = Field(validation_alias=AliasChoices("memory_usage", "memory"))
+    latency_ms: float = Field(validation_alias=AliasChoices("latency_ms", "latency"))
+    requests_per_sec: float = Field(validation_alias=AliasChoices("requests_per_sec", "rps"))
+    disk_usage: float = Field(
+        default=0.0,
+        validation_alias=AliasChoices("disk_usage", "disk"),
+    )
+    timestamp: Optional[datetime] = None
+
+
+def _serialize_user_for_state(user: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "sub": user.get("sub", "anonymous"),
+        "username": user.get("username"),
+        "roles": user.get("roles", ["guest"]),
+        "scopes": user.get("scopes", []),
+    }
+
+
+def _current_user(request: Request) -> Dict[str, Any]:
+    return getattr(request.state, "user", {"sub": "anonymous", "roles": ["guest"]})
+
+
+def _require_permission(request: Request, permission: Permission) -> Dict[str, Any]:
+    user = _current_user(request)
+    access = _rbac.evaluate_access(
+        str(user.get("sub", "anonymous")),
+        list(user.get("roles", ["guest"])),
+        permission,
+    )
+    if not access.has_permission(permission):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Missing permission: {permission.value}",
+        )
+    return user
+
+
 # ================================================================
 # Health
 # ================================================================
@@ -245,8 +379,91 @@ async def health():
 
 
 # ================================================================
+# Auth
+# ================================================================
+
+@app.post("/api/auth/token", tags=["Auth"], summary="Issue a development JWT")
+async def create_token(payload: TokenRequest) -> Dict[str, Any]:
+    role = payload.role if payload.role in _rbac.roles else "viewer"
+    subject = payload.subject or payload.username
+    token_data = _jwt_handler.generate_token(
+        subject=subject,
+        username=payload.username,
+        email=payload.email,
+        roles=[role],
+        scopes=[permission.value for permission in _rbac.get_user_permissions([role])],
+    )
+    refresh_token = _jwt_handler.generate_refresh_token(subject, username=payload.username)
+    return {
+        **token_data,
+        "refresh_token": refresh_token,
+        "role": role,
+    }
+
+
+# ================================================================
 # METRICS
 # ================================================================
+
+@app.post(
+    "/api/metrics",
+    tags=["Metrics"],
+    summary="Ingest a metric sample",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def ingest_metric(payload: MetricIngestRequest, request: Request) -> Dict[str, Any]:
+    timestamp = payload.timestamp or datetime.now(timezone.utc)
+    stream_entry = {
+        "node_id": payload.node_id,
+        "timestamp": str(timestamp.timestamp()),
+        "cpu_usage": str(payload.cpu_usage),
+        "memory_usage": str(payload.memory_usage),
+        "latency_ms": str(payload.latency_ms),
+        "requests_per_sec": str(payload.requests_per_sec),
+        "disk_usage": str(payload.disk_usage),
+    }
+
+    if state.redis is not None:
+        try:
+            async with _redis_cb:
+                message_id = await state.redis.xadd(
+                    os.getenv("METRICS_STREAM_KEY", "metrics_stream"),
+                    stream_entry,
+                )
+            return {
+                "status": "queued",
+                "message_id": message_id,
+                "trace_id": getattr(request.state, "trace_id", None),
+            }
+        except CircuitBreakerError:
+            log.warning("metrics_enqueue_circuit_open")
+        except Exception as exc:
+            log.warning("metrics_enqueue_failed", extra={"error": str(exc)})
+
+    pool = await _require_db()
+    try:
+        async with _pg_cb:
+            async with pool.acquire() as con:
+                await con.execute(
+                    """INSERT INTO metrics
+                       (node_id, timestamp, cpu_usage, memory_usage, latency_ms,
+                        requests_per_sec, disk_usage)
+                       VALUES ($1, $2, $3, $4, $5, $6, $7)""",
+                    payload.node_id,
+                    timestamp,
+                    payload.cpu_usage,
+                    payload.memory_usage,
+                    payload.latency_ms,
+                    payload.requests_per_sec,
+                    payload.disk_usage,
+                )
+    except CircuitBreakerError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    return {
+        "status": "stored",
+        "trace_id": getattr(request.state, "trace_id", None),
+    }
 
 @app.get(
     "/api/metrics",
@@ -383,7 +600,8 @@ async def get_predictions(
             async with pool.acquire() as con:
                 rows = await con.fetch(
                     """SELECT id, predicted_at, horizon_minutes, predicted_rps,
-                              predicted_cpu, confidence
+                              predicted_cpu, confidence, lower_bound, upper_bound,
+                              spike_probability, model_name
                        FROM predictions ORDER BY predicted_at DESC LIMIT $1""",
                     limit,
                 )
@@ -526,3 +744,40 @@ async def system_status() -> SystemStatus:
         predicted_rps=round(float(latest_prediction or 0), 2),
         timestamp=datetime.now(timezone.utc),
     )
+
+
+@app.post(
+    "/api/scaling/manual",
+    tags=["Scaling"],
+    summary="Create a manual scaling request",
+)
+async def manual_scale(target: int, request: Request) -> Dict[str, Any]:
+    user = _require_permission(request, Permission.SCALING_EXECUTE)
+    if target < 1:
+        raise HTTPException(status_code=400, detail="target must be >= 1")
+
+    pool = await _require_db()
+    try:
+        async with _pg_cb:
+            async with pool.acquire() as con:
+                previous = await con.fetchval(
+                    "SELECT COUNT(*) FROM workers WHERE status='active'"
+                )
+                await con.execute(
+                    """INSERT INTO scaling_events
+                           (triggered_at, action, prev_replicas, new_replicas, reason)
+                       VALUES ($1, $2, $3, $4, $5)""",
+                    datetime.now(timezone.utc),
+                    "manual_scale",
+                    int(previous or 0),
+                    target,
+                    f"manual request by {user.get('sub', 'anonymous')}",
+                )
+    except CircuitBreakerError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    return {
+        "status": "accepted",
+        "requested_target": target,
+        "requested_by": user.get("sub", "anonymous"),
+    }

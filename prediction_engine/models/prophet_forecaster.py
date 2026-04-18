@@ -15,7 +15,9 @@ Limitations:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+import os
+import sys
+from datetime import datetime
 from typing import Dict, Optional
 
 import numpy as np
@@ -92,7 +94,6 @@ class ProphetForecaster:
             yearly_seasonality=False,          # Not enough data typically
             daily_seasonality=True,            # Hour-of-day patterns
             weekly_seasonality=True,           # Day-of-week patterns
-            seasonal_periods=288,              # 24 hours at 5-min intervals
         )
         
         # Fit model
@@ -305,10 +306,6 @@ class ProphetForecaster:
         
         return ""
 
-
-# Suppress Prophet logging (optional)
-import os
-import sys
 
 logging.getLogger("prophet.plot.diagnostics").setLevel(logging.ERROR)
 logging.getLogger("cmdstanpy").setLevel(logging.ERROR)

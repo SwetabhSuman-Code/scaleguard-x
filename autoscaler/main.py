@@ -1,23 +1,24 @@
 """
-ScaleGuard X — Autoscaler
-Periodically checks:
-  • latest prediction from predictions table
-  • average CPU load across nodes (last 2 min)
-  • current worker count from workers table
-Decides to scale up or down using Docker SDK.
+ScaleGuard X - Autoscaler
 
-Fix #3: get_docker_client() detects platform and picks the right socket.
-Fix #4: Circuit breaker on all DB calls; exponential back-off on connect.
-Fix #5: Structured JSON logging via lib.logging_config.
+Uses the phase 3 predictive scaler to combine:
+  - current CPU utilization
+  - stored forecast ranges from the prediction engine
+  - stored spike probability for emergency handling
+
+The runtime still degrades gracefully to dry-run mode when Docker access is
+not available.
 """
 
 from __future__ import annotations
 
 import asyncio
+import math
 import os
 import platform
 import sys
-from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -25,9 +26,8 @@ import asyncpg
 import docker
 from dotenv import load_dotenv
 
-# ── Shared lib (add repo root to path so Docker containers can find it) ──
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
+from autoscaler.models.predictive_scaler import PredictiveScaler, PredictiveScalerConfig
 from lib.circuit_breaker import (
     CircuitBreakerError,
     make_docker_breaker,
@@ -43,7 +43,6 @@ setup_metrics("autoscaler")
 setup_metrics_server(port=9094)
 log = get_logger("autoscaler")
 
-# ── Config ───────────────────────────────────────────────────────
 PG_DSN = (
     f"postgresql://{os.getenv('POSTGRES_USER', 'scaleguard')}"
     f":{os.getenv('POSTGRES_PASSWORD', 'scaleguard_secret')}"
@@ -52,27 +51,53 @@ PG_DSN = (
     f"/{os.getenv('POSTGRES_DB', 'scaleguard')}"
 )
 
-MIN_WORKERS   = int(os.getenv("AUTOSCALER_MIN_WORKERS", 1))
-MAX_WORKERS   = int(os.getenv("AUTOSCALER_MAX_WORKERS", 8))
-UP_THRESH     = float(os.getenv("AUTOSCALER_SCALE_UP_THRESHOLD", 0.75))
-DOWN_THRESH   = float(os.getenv("AUTOSCALER_SCALE_DOWN_THRESHOLD", 0.35))
-RUN_INTERVAL  = int(os.getenv("AUTOSCALER_RUN_INTERVAL", 15))  # seconds
+MIN_WORKERS = int(os.getenv("AUTOSCALER_MIN_WORKERS", 1))
+MAX_WORKERS = int(os.getenv("AUTOSCALER_MAX_WORKERS", 8))
+RUN_INTERVAL = int(os.getenv("AUTOSCALER_RUN_INTERVAL", 15))
+RPS_PER_WORKER = float(os.getenv("AUTOSCALER_RPS_PER_WORKER", "300"))
 
-WORKER_SERVICE_NAME = os.getenv("WORKER_SERVICE_NAME", "scaleguard-x-worker_cluster")
-
-# ── Circuit breakers ─────────────────────────────────────────────
-_pg_cb     = make_postgres_breaker("autoscaler")
+_pg_cb = make_postgres_breaker("autoscaler")
 _docker_cb = make_docker_breaker("autoscaler")
 
 
-# ── Issue #3 — Cross-platform Docker client ──────────────────────
+@dataclass
+class PredictionSnapshot:
+    predicted_rps: float = 0.0
+    upper_bound: float = 0.0
+    spike_probability: float = 0.0
+    confidence: float = 0.0
+    model_name: str = "none"
+
+
+class StoredPredictionAdapter:
+    """Expose the latest stored upper bound through the Prophet interface."""
+
+    def predict_next_10_minutes(self, recent_data: dict) -> dict:
+        return {"upper_bound": recent_data.get("predicted_utilization_upper", 0.0)}
+
+
+class StoredSpikeAdapter:
+    """Expose the latest stored spike probability through the LSTM interface."""
+
+    def predict_spike_probability(self, recent_data: dict) -> tuple[float, float]:
+        spike_probability = float(recent_data.get("spike_probability", 0.0))
+        return spike_probability, max(0.0, 1.0 - spike_probability)
+
+
+_predictive_scaler = PredictiveScaler(
+    PredictiveScalerConfig(
+        min_scaling_action=-3.0,
+        max_scaling_action=3.0,
+        min_decision_interval=max(float(RUN_INTERVAL), 15.0),
+        min_scaling_magnitude=0.5,
+    ),
+    prophet_module=StoredPredictionAdapter(),
+    lstm_module=StoredSpikeAdapter(),
+)
+
+
 def get_docker_client() -> Optional[docker.DockerClient]:
-    """
-    Return a Docker client appropriate for the current platform.
-    - Windows   → named pipe (npipe)
-    - macOS/Linux → unix socket via docker.from_env()
-    Returns None (and logs a warning) if the socket is unavailable.
-    """
+    """Return a Docker client appropriate for the current platform."""
     system = platform.system()
     try:
         if system == "Windows":
@@ -88,15 +113,13 @@ def get_docker_client() -> Optional[docker.DockerClient]:
             "docker_socket_unavailable",
             extra={"platform": system, "error": str(exc)},
         )
-        log.warning("Running in DRY-RUN mode — scaling decisions will be logged only")
+        log.warning("running_in_dry_run_mode")
         return None
 
 
-# ── DB Pool — exponential back-off ───────────────────────────────
 async def create_pool() -> asyncpg.Pool:
-    """Connect to Postgres with exponential back-off (up to ~4 min total)."""
     for attempt in range(15):
-        delay = min(2 ** attempt, 30)  # 1, 2, 4, 8, 16, 30, 30 ...
+        delay = min(2**attempt, 30)
         try:
             pool = await asyncpg.create_pool(
                 PG_DSN,
@@ -114,81 +137,51 @@ async def create_pool() -> asyncpg.Pool:
     raise RuntimeError("Cannot connect to Postgres after 15 attempts")
 
 
-# ── Fetch metrics (circuit-breaker protected) ─────────────────────
 async def get_average_cpu(pool: asyncpg.Pool) -> float:
-    """Average CPU across all nodes for the last 2 minutes."""
-    since = datetime.now(timezone.utc) - timedelta(minutes=2)
     try:
         async with _pg_cb:
             async with pool.acquire() as con:
-                val = await con.fetchval(
-                    "SELECT AVG(cpu_usage) FROM metrics WHERE timestamp >= $1", since
+                value = await con.fetchval(
+                    """SELECT AVG(cpu_usage)
+                       FROM metrics
+                       WHERE timestamp >= NOW() - INTERVAL '2 minutes'"""
                 )
-        return float(val or 0.0)
+        return float(value or 0.0)
     except CircuitBreakerError as exc:
         log.warning("circuit_open_cpu_fetch", extra={"error": str(exc)})
         return 0.0
 
 
-async def get_latest_predicted_rps(pool: asyncpg.Pool) -> float:
-    """Most recent RPS prediction from the predictions table."""
+async def get_latest_prediction(pool: asyncpg.Pool) -> PredictionSnapshot:
     try:
         async with _pg_cb:
             async with pool.acquire() as con:
-                val = await con.fetchval(
-                    "SELECT predicted_rps FROM predictions ORDER BY predicted_at DESC LIMIT 1"
+                row = await con.fetchrow(
+                    """SELECT predicted_rps, upper_bound, spike_probability, confidence, model_name
+                       FROM predictions
+                       ORDER BY predicted_at DESC
+                       LIMIT 1"""
                 )
-        return float(val or 0.0)
+        if row is None:
+            return PredictionSnapshot()
+        return PredictionSnapshot(
+            predicted_rps=float(row["predicted_rps"] or 0.0),
+            upper_bound=float(row["upper_bound"] or row["predicted_rps"] or 0.0),
+            spike_probability=float(row["spike_probability"] or 0.0),
+            confidence=float(row["confidence"] or 0.0),
+            model_name=str(row["model_name"] or "unknown"),
+        )
     except CircuitBreakerError as exc:
-        log.warning("circuit_open_rps_fetch", extra={"error": str(exc)})
-        return 0.0
+        log.warning("circuit_open_prediction_fetch", extra={"error": str(exc)})
+        return PredictionSnapshot()
 
 
-async def get_active_worker_count(pool: asyncpg.Pool) -> int:
-    """Worker count from DB registry."""
-    try:
-        async with _pg_cb:
-            async with pool.acquire() as con:
-                val = await con.fetchval(
-                    "SELECT COUNT(*) FROM workers WHERE status='active'"
-                )
-        return int(val or 0)
-    except CircuitBreakerError as exc:
-        log.warning("circuit_open_worker_count", extra={"error": str(exc)})
-        return MIN_WORKERS
-
-
-# ── Record scaling event ─────────────────────────────────────────
-async def record_scaling_event(
-    pool: asyncpg.Pool,
-    action: str,
-    prev: int,
-    new: int,
-    reason: str,
-) -> None:
-    """Persist autoscaling decision to scaling_events table."""
-    try:
-        async with _pg_cb:
-            async with pool.acquire() as con:
-                await con.execute(
-                    """INSERT INTO scaling_events
-                           (triggered_at, action, prev_replicas, new_replicas, reason)
-                       VALUES ($1, $2, $3, $4, $5)""",
-                    datetime.now(timezone.utc), action, prev, new, reason,
-                )
-    except (CircuitBreakerError, Exception) as exc:
-        log.error("scaling_event_record_failed", extra={"error": str(exc)})
-
-
-# ── Get current running worker containers ────────────────────────
 def get_worker_containers(docker_client: docker.DockerClient) -> list:
-    """Return all running containers with the worker_cluster service label."""
     try:
         with _docker_cb:
-            containers = docker_client.containers.list(
+            return docker_client.containers.list(
                 filters={"label": "com.docker.compose.service=worker_cluster"}
             )
-        return containers
     except CircuitBreakerError as exc:
         log.warning("circuit_open_docker_list", extra={"error": str(exc)})
         return []
@@ -197,37 +190,28 @@ def get_worker_containers(docker_client: docker.DockerClient) -> list:
         return []
 
 
-# ── Scale up: start a new worker container ───────────────────────
 def spawn_worker(
     docker_client: docker.DockerClient,
     worker_index: int,
     env_vars: dict,
 ) -> Optional[str]:
-    """Launch a new worker_cluster container and return its short ID."""
     try:
         with _docker_cb:
-            image_name = "scaleguard-x-worker_cluster"
-            env_list   = [f"{k}={v}" for k, v in env_vars.items()]
-            container  = docker_client.containers.run(
-                image_name,
+            container = docker_client.containers.run(
+                "scaleguard-x-worker_cluster",
                 detach=True,
                 network="scaleguard-x_default",
-                environment=env_list + [f"NODE_ID=worker-dynamic-{worker_index}"],
+                environment=[f"{k}={v}" for k, v in env_vars.items()]
+                + [f"NODE_ID=worker-dynamic-{worker_index}"],
                 labels={
-                    "com.docker.compose.service":  "worker_cluster",
-                    "com.docker.compose.project":  "scaleguard-x",
-                    "scaleguard.dynamic":           "true",
-                    "scaleguard.role":              "worker",
+                    "com.docker.compose.service": "worker_cluster",
+                    "com.docker.compose.project": "scaleguard-x",
+                    "scaleguard.dynamic": "true",
+                    "scaleguard.role": "worker",
                 },
                 name=f"scaleguard-x-worker-dyn-{worker_index}",
             )
-        log.info(
-            "worker_spawned",
-            extra={
-                "container_id": container.short_id,
-                "worker_index": worker_index,
-            },
-        )
+        log.info("worker_spawned", extra={"container_id": container.short_id})
         return container.short_id
     except CircuitBreakerError as exc:
         log.error("circuit_open_spawn", extra={"error": str(exc)})
@@ -237,9 +221,7 @@ def spawn_worker(
         return None
 
 
-# ── Scale down: stop the most recently added dynamic container ───
 def terminate_worker(docker_client: docker.DockerClient) -> bool:
-    """Stop and remove one dynamic worker container."""
     try:
         with _docker_cb:
             containers = docker_client.containers.list(
@@ -260,12 +242,10 @@ def terminate_worker(docker_client: docker.DockerClient) -> bool:
         return False
 
 
-# ── Sync worker registry from running containers ─────────────────
 async def sync_worker_registry(
     pool: asyncpg.Pool,
     docker_client: Optional[docker.DockerClient],
 ) -> None:
-    """Update the workers table based on currently running containers."""
     if docker_client is None:
         return
     try:
@@ -273,94 +253,133 @@ async def sync_worker_registry(
         async with _pg_cb:
             async with pool.acquire() as con:
                 await con.execute("UPDATE workers SET status='terminated' WHERE status='active'")
-                for c in containers:
-                    node_id = (
-                        c.labels.get("NODE_ID")
-                        or c.name.replace("scaleguard-x-", "").replace("_", "-")
-                    )
+                for container in containers:
+                    worker_id = container.name.replace("scaleguard-x-", "").replace("_", "-")
                     await con.execute(
                         """INSERT INTO workers (worker_id, container_id, status, last_heartbeat)
                            VALUES ($1, $2, 'active', NOW())
                            ON CONFLICT (worker_id) DO UPDATE
-                               SET status='active', last_heartbeat=NOW(),
+                               SET status='active',
+                                   last_heartbeat=NOW(),
                                    container_id=EXCLUDED.container_id""",
-                        node_id, c.short_id,
+                        worker_id,
+                        container.short_id,
                     )
-    except (CircuitBreakerError, Exception) as exc:
+    except Exception as exc:
         log.warning("registry_sync_failed", extra={"error": str(exc)})
 
 
-# ── Scaling logic ────────────────────────────────────────────────
+async def record_scaling_event(
+    pool: asyncpg.Pool,
+    action: str,
+    previous: int,
+    new: int,
+    reason: str,
+) -> None:
+    try:
+        async with _pg_cb:
+            async with pool.acquire() as con:
+                await con.execute(
+                    """INSERT INTO scaling_events
+                           (triggered_at, action, prev_replicas, new_replicas, reason)
+                       VALUES ($1, $2, $3, $4, $5)""",
+                    datetime.now(timezone.utc),
+                    action,
+                    previous,
+                    new,
+                    reason,
+                )
+    except Exception as exc:
+        log.error("scaling_event_record_failed", extra={"error": str(exc)})
+
+
+def scale_delta_to_target(current_count: int, action: float) -> int:
+    if action < 0:
+        return min(MAX_WORKERS, current_count + math.ceil(abs(action)))
+    if action > 0:
+        return max(MIN_WORKERS, current_count - math.ceil(action))
+    return current_count
+
+
 async def autoscale_cycle(
     pool: asyncpg.Pool,
     docker_client: Optional[docker.DockerClient],
 ) -> None:
-    """Single autoscaling evaluation cycle."""
-    avg_cpu       = await get_average_cpu(pool)
-    predicted_rps = await get_latest_predicted_rps(pool)
+    avg_cpu = await get_average_cpu(pool)
+    prediction = await get_latest_prediction(pool)
 
-    if docker_client:
-        containers    = get_worker_containers(docker_client)
+    if docker_client is not None:
+        containers = get_worker_containers(docker_client)
         current_count = len(containers) if containers else MIN_WORKERS
     else:
         current_count = MIN_WORKERS
 
-    # Utilization score: 60% CPU + 40% RPS fraction
-    rps_fraction = min(1.0, predicted_rps / 300.0)
-    cpu_fraction = min(1.0, avg_cpu / 100.0)
-    utilization  = 0.6 * cpu_fraction + 0.4 * rps_fraction
+    predicted_utilization_upper = 0.0
+    if current_count > 0 and RPS_PER_WORKER > 0:
+        predicted_utilization_upper = min(
+            100.0,
+            (prediction.upper_bound / (current_count * RPS_PER_WORKER)) * 100.0,
+        )
+
+    decision = _predictive_scaler.decide_scaling(
+        current_utilization=avg_cpu,
+        recent_data={
+            "predicted_utilization_upper": predicted_utilization_upper,
+            "spike_probability": prediction.spike_probability,
+        },
+        dt=float(RUN_INTERVAL),
+    )
+
+    target_count = scale_delta_to_target(current_count, decision.action)
+    action_name = "no_change"
+    if target_count > current_count:
+        action_name = "scale_up"
+    elif target_count < current_count:
+        action_name = "scale_down"
+
+    reason = (
+        f"{decision.reason}; cpu={avg_cpu:.1f}; "
+        f"predicted_rps={prediction.predicted_rps:.1f}; "
+        f"upper_util={predicted_utilization_upper:.1f}; "
+        f"spike_probability={prediction.spike_probability:.2f}; "
+        f"model={prediction.model_name}"
+    )
 
     log.info(
         "autoscale_cycle",
         extra={
             "avg_cpu": round(avg_cpu, 1),
-            "predicted_rps": round(predicted_rps, 1),
-            "utilization": round(utilization, 3),
+            "predicted_rps": round(prediction.predicted_rps, 1),
+            "predicted_utilization_upper": round(predicted_utilization_upper, 1),
+            "spike_probability": round(prediction.spike_probability, 3),
             "workers": current_count,
+            "target_workers": target_count,
+            "decision_action": round(decision.action, 3),
+            "reason": reason,
         },
     )
 
-    action    = "no_change"
-    new_count = current_count
-    reason: str
+    if docker_client is not None:
+        env_vars = {
+            "REDIS_HOST": os.getenv("REDIS_HOST", "redis_queue"),
+            "REDIS_PORT": os.getenv("REDIS_PORT", "6379"),
+            "METRICS_STREAM_KEY": os.getenv("METRICS_STREAM_KEY", "metrics_stream"),
+            "AGENT_INTERVAL": "5",
+            "LOG_LEVEL": os.getenv("LOG_LEVEL", "INFO"),
+        }
+        while current_count < target_count:
+            current_count += 1
+            spawn_worker(docker_client, current_count, env_vars)
+        while current_count > target_count:
+            if terminate_worker(docker_client):
+                current_count -= 1
+            else:
+                break
 
-    if utilization >= UP_THRESH and current_count < MAX_WORKERS:
-        new_count = min(current_count + 1, MAX_WORKERS)
-        action    = "scale_up"
-        reason    = (
-            f"utilization={utilization:.2f} >= {UP_THRESH} "
-            f"(cpu={avg_cpu:.1f}%, rps={predicted_rps:.1f})"
-        )
-        log.info("scaling_up", extra={"from": current_count, "to": new_count, "reason": reason})
-        if docker_client:
-            spawn_worker(docker_client, new_count, {
-                "REDIS_HOST":         os.getenv("REDIS_HOST", "redis_queue"),
-                "REDIS_PORT":         os.getenv("REDIS_PORT", "6379"),
-                "METRICS_STREAM_KEY": os.getenv("METRICS_STREAM_KEY", "metrics_stream"),
-                "AGENT_INTERVAL":     "5",
-                "LOG_LEVEL":          os.getenv("LOG_LEVEL", "INFO"),
-            })
-
-    elif utilization <= DOWN_THRESH and current_count > MIN_WORKERS:
-        new_count = max(current_count - 1, MIN_WORKERS)
-        action    = "scale_down"
-        reason    = (
-            f"utilization={utilization:.2f} <= {DOWN_THRESH} "
-            f"(cpu={avg_cpu:.1f}%, rps={predicted_rps:.1f})"
-        )
-        log.info("scaling_down", extra={"from": current_count, "to": new_count, "reason": reason})
-        if docker_client:
-            terminate_worker(docker_client)
-
-    else:
-        reason = f"utilization={utilization:.2f} within bounds — no change"
-        log.info("no_scaling_needed", extra={"utilization": round(utilization, 3)})
-
-    await record_scaling_event(pool, action, current_count, new_count, reason)
+    await record_scaling_event(pool, action_name, current_count, target_count, reason)
     await sync_worker_registry(pool, docker_client)
 
 
-# ── Main loop ────────────────────────────────────────────────────
 async def main() -> None:
     log.info(
         "autoscaler_starting",
@@ -370,7 +389,7 @@ async def main() -> None:
             "max_workers": MAX_WORKERS,
         },
     )
-    pool          = await create_pool()
+    pool = await create_pool()
     docker_client = get_docker_client()
     if docker_client is None:
         log.warning("dry_run_mode_active")

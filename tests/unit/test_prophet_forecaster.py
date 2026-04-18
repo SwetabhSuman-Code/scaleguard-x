@@ -17,10 +17,8 @@ def synthetic_traffic_data():
     base = np.sin(np.arange(4320) * 2 * np.pi / 288) * 50 + 200
     
     # Add weekly pattern (higher on weekdays)
-    daily_offset = np.tile(
-        [10, 15, 20, 25, 30, 5, 0],  # Mon-Sun pattern
-        4320 // (7 * 288) + 1
-    )[:4320]
+    daily_offset = np.repeat([10, 15, 20, 25, 30, 5, 0], 288)
+    daily_offset = np.tile(daily_offset, 3)[:4320]
     
     # Add realistic noise
     noise = np.random.normal(0, 10, 4320)

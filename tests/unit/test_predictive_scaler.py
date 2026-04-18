@@ -166,7 +166,7 @@ class TestProphetIntegration:
         decision = scaler.decide_scaling(60.0, recent_data=recent_data, dt=1.0)
         
         # Should include prophet component
-        assert decision.factors["prophet_component"] > 0
+        assert decision.factors["prophet_component"] < 0
         assert decision.factors["predicted_peak"] == 85.0
 
     def test_prophet_failure_handling(self):
@@ -228,9 +228,9 @@ class TestLSTMIntegration:
         # Should be marked as emergency
         assert decision.is_emergency is True
         # Should have LSTM component
-        assert decision.factors["lstm_component"] > 0
+        assert decision.factors["lstm_component"] < 0
         # Action should be boosted by spike_scaling_boost (1.5)
-        assert decision.action > decision.factors["lstm_component"]
+        assert decision.action < decision.factors["lstm_component"]
 
     def test_lstm_normal_probability_no_emergency(self):
         """Low spike probability doesn't trigger emergency."""

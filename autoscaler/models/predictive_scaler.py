@@ -14,7 +14,7 @@ This creates intelligent autoscaling that is:
 """
 
 import logging
-from typing import Dict, Optional, Tuple, Any
+from typing import Dict, Optional, Any
 from dataclasses import dataclass
 import time
 
@@ -42,8 +42,8 @@ class PredictiveScalerConfig:
     spike_scaling_boost: float = 1.5  # Multiply scaling action by 1.5 during spikes
     
     # Scaling bounds
-    min_scaling_action: float = -5.0  # Maximum scale down (instances)
-    max_scaling_action: float = 10.0  # Maximum scale up (instances)
+    min_scaling_action: float = -5.0  # Maximum scale-up action (negative)
+    max_scaling_action: float = 10.0  # Maximum scale-down action (positive)
     
     # Thrashing prevention
     min_decision_interval: float = 300.0  # No scaling decisions more than every 5 minutes
@@ -128,7 +128,7 @@ class PredictiveScaler:
                 output_max=self.config.max_scaling_action,
             )
         )
-        self.last_scaling_decision_time = time.time()
+        self.last_scaling_decision_time = time.time() - self.config.min_decision_interval
         self.scaling_decision_history = []
 
         logger.info(
@@ -163,6 +163,11 @@ class PredictiveScaler:
         decision = ScalingDecision()
         decision.factors["current_utilization"] = current_utilization
 
+        if not 0 <= current_utilization <= 100:
+            raise ValueError(
+                f"Utilization must be 0-100, got {current_utilization}"
+            )
+
         # Check thrashing prevention
         time_since_last_decision = time.time() - self.last_scaling_decision_time
         if time_since_last_decision < self.config.min_decision_interval:
@@ -194,8 +199,8 @@ class PredictiveScaler:
                 if predicted_peak > headroom_threshold:
                     # Scale proactively based on how far above threshold we are
                     excess = predicted_peak - headroom_threshold
-                    prophet_component = min(
-                        0.8 * self.config.max_scaling_action,
+                    prophet_component = -min(
+                        0.8 * abs(self.config.min_scaling_action),
                         0.1 * excess / 10.0  # 0.1 instances per 10% exceed
                     )
                     decision.reason = (
@@ -220,7 +225,7 @@ class PredictiveScaler:
 
                 if spike_prob > self.config.spike_probability_threshold:
                     # Emergency spike detected: aggressive scaling
-                    lstm_component = self.config.max_scaling_action * 0.8
+                    lstm_component = self.config.min_scaling_action * 0.8
                     is_emergency = True
                     decision.reason = (
                         f"LSTM SPIKE ALERT: Spike probability {spike_prob:.1%} "
@@ -310,5 +315,5 @@ class PredictiveScaler:
         """Reset scaler state and history."""
         self.pid_controller.reset()
         self.scaling_decision_history = []
-        self.last_scaling_decision_time = time.time()
+        self.last_scaling_decision_time = time.time() - self.config.min_decision_interval
         logger.info("PredictiveScaler reset")

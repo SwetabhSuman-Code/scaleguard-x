@@ -69,11 +69,21 @@ CREATE TABLE IF NOT EXISTS predictions (
     horizon_minutes   INT         NOT NULL,
     predicted_rps     DOUBLE PRECISION NOT NULL,
     predicted_cpu     DOUBLE PRECISION,
-    confidence        DOUBLE PRECISION
+    confidence        DOUBLE PRECISION,
+    lower_bound       DOUBLE PRECISION,
+    upper_bound       DOUBLE PRECISION,
+    spike_probability DOUBLE PRECISION,
+    model_name        VARCHAR(64)
 );
 
 CREATE INDEX IF NOT EXISTS idx_predictions_time
     ON predictions (predicted_at DESC);
+
+ALTER TABLE predictions
+    ADD COLUMN IF NOT EXISTS lower_bound DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS upper_bound DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS spike_probability DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS model_name VARCHAR(64);
 
 -- ================================================================
 -- 4. SCALING_EVENTS TABLE

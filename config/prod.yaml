@@ -29,6 +29,15 @@ services:
     cors_origins:
       - "https://app.scaleguard.io"
       - "https://dashboard.scaleguard.io"
+    auth:
+      jwt_issuer: "${JWT_ISSUER}"
+      jwt_audience: "${JWT_AUDIENCE}"
+      token_ttl_minutes: 60
+    rate_limits:
+      guest_rps: 10
+      viewer_rps: 100
+      operator_rps: 500
+      admin_rps: 1000
 
   ingestion:
     batch_size: 500
@@ -43,14 +52,20 @@ services:
   prediction_engine:
     horizon_minutes:  10
     history_minutes:  60
+    prophet_history_minutes: 20160
+    prophet_retrain_minutes: 360
+    lstm_training_samples: 300
+    lstm_epochs: 4
     run_interval_s:   30
 
   autoscaler:
     min_workers:          2
     max_workers:          8
-    scale_up_threshold:   0.75
-    scale_down_threshold: 0.35
+    scale_up_threshold:   0.80
+    scale_down_threshold: 0.40
+    rps_per_worker:       300
     run_interval_s:       15
+    max_step_change:      3
 
   metrics_agent:
     interval_s: 5

@@ -1,0 +1,73 @@
+name: ScaleGuard X Benchmark
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install benchmark dependencies
+        run: |
+          pip install -r requirements-benchmark.txt
+
+      - name: Prepare environment file
+        run: |
+          cp .env.example .env
+          python - <<'PY'
+          from pathlib import Path
+          env_path = Path(".env")
+          content = env_path.read_text()
+          content = content.replace("CHANGE_ME_strong_password_here", "ci_scaleguard_password")
+          content = content.replace("CHANGE_ME_grafana_password", "ci_grafana_password")
+          content = content.replace(
+              "CHANGE_ME_scaleguard_dev_secret_min_32_chars",
+              "ci_scaleguard_secret_key_min_32_chars",
+          )
+          env_path.write_text(content)
+          PY
+
+      - name: Start benchmark stack
+        run: docker compose up -d --build postgres_db redis_queue api_gateway
+
+      - name: Wait for API gateway health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8000/health > /dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose logs api_gateway
+          exit 1
+
+      - name: Run benchmark regression tests
+        run: |
+          pytest benchmarks/test_latency.py::test_health_endpoint_latency -m benchmark -v
+          pytest benchmarks/test_throughput.py::test_throughput_1k_metrics_per_sec -m benchmark -v
+
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: benchmarks/results/*.json
+
+      - name: Show service logs on failure
+        if: failure()
+        run: docker compose logs --no-color api_gateway postgres_db redis_queue
+
+      - name: Tear down benchmark stack
+        if: always()
+        run: docker compose down -v
