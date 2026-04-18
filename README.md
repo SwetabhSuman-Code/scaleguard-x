@@ -36,7 +36,7 @@ Measured benchmark artifacts currently checked into the repo:
 Important note:
 The checked-in `throughput_1k_metrics_per_sec.json` result is not a valid success run. It recorded zero successful writes during an earlier benchmark pass before the ingestion route and payload compatibility work were finished. Throughput must be rerun before publishing any ingestion-capacity claim.
 
-See [docs/BENCHMARKS.md](/C:/Users/KIIT0001/Desktop/scaleguard-x/docs/BENCHMARKS.md) for details and rerun instructions.
+See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for details and rerun instructions.
 
 ## Architecture
 
@@ -82,9 +82,9 @@ graph TD
 
 Week 9 delivery is represented as a pilot deployment scaffold, not a claimed production rollout:
 
-- Terraform scaffold: [infrastructure/terraform/main.tf](/C:/Users/KIIT0001/Desktop/scaleguard-x/infrastructure/terraform/main.tf)
-- Deployment guide: [docs/DEPLOYMENT.md](/C:/Users/KIIT0001/Desktop/scaleguard-x/docs/DEPLOYMENT.md)
-- Real-world validation notes: [docs/REAL_WORLD_USAGE.md](/C:/Users/KIIT0001/Desktop/scaleguard-x/docs/REAL_WORLD_USAGE.md)
+- Terraform scaffold: [infrastructure/terraform/main.tf](infrastructure/terraform/main.tf)
+- Deployment guide: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+- Real-world validation notes: [docs/REAL_WORLD_USAGE.md](docs/REAL_WORLD_USAGE.md)
 
 The Terraform config targets AWS ECS Fargate with RDS PostgreSQL, ElastiCache Redis, an HTTPS ALB, and CloudWatch logs. It is intended as a starting point for a pilot, not as a guaranteed-ready production module.
 
@@ -104,14 +104,14 @@ Do not use ScaleGuard X as-is when:
 
 ## Documentation
 
-- [docs/BENCHMARKS.md](/C:/Users/KIIT0001/Desktop/scaleguard-x/docs/BENCHMARKS.md)
-- [docs/DEPLOYMENT.md](/C:/Users/KIIT0001/Desktop/scaleguard-x/docs/DEPLOYMENT.md)
-- [docs/REAL_WORLD_USAGE.md](/C:/Users/KIIT0001/Desktop/scaleguard-x/docs/REAL_WORLD_USAGE.md)
-- [docs/ONCALL_RUNBOOK.md](/C:/Users/KIIT0001/Desktop/scaleguard-x/docs/ONCALL_RUNBOOK.md)
-- [docs/api_docs.md](/C:/Users/KIIT0001/Desktop/scaleguard-x/docs/api_docs.md)
+- [docs/BENCHMARKS.md](docs/BENCHMARKS.md)
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+- [docs/REAL_WORLD_USAGE.md](docs/REAL_WORLD_USAGE.md)
+- [docs/ONCALL_RUNBOOK.md](docs/ONCALL_RUNBOOK.md)
+- [docs/api_docs.md](docs/api_docs.md)
 
 ## Development notes
 
-- Python configuration lives in [pyproject.toml](/C:/Users/KIIT0001/Desktop/scaleguard-x/pyproject.toml)
+- Python configuration lives in [pyproject.toml](pyproject.toml)
 - Main services live in `api_gateway/`, `prediction_engine/`, `autoscaler/`, `ingestion_service/`, `anomaly_engine/`, and `metrics_agent/`
 - The most meaningful verification right now is the targeted unit and integration suites, plus rerunning benchmarks against a live stack
