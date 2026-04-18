@@ -1,65 +1,81 @@
 """
 ScaleGuard X — Metrics Collection Agent
-Runs on each node and collects system metrics every N seconds,
-then publishes them to a Redis Stream for the Ingestion Service to consume.
+
+Runs on each node; collects system metrics every N seconds
+and publishes them to Redis Stream for the Ingestion Service.
+
+Phase 1 upgrades:
+  Fix #5 — Structured JSON logging
 """
 
-import json
-import logging
+from __future__ import annotations
+
 import os
+import random
 import socket
+import sys
 import time
 import uuid
+from pathlib import Path
 
 import psutil
 import redis
 from dotenv import load_dotenv
 
+# ── Shared lib ────────────────────────────────────────────────────
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from lib.logging_config import get_logger, setup_json_logging
+from lib.prometheus_metrics import setup_metrics, setup_metrics_server
+
 load_dotenv()
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [AGENT:%(hostname)s] %(levelname)s %(message)s"
-)
-log = logging.getLogger("metrics_agent")
-
-# ── Config ───────────────────────────────────────────────────────
+# ── Config ────────────────────────────────────────────────────────
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-REDIS_PORT  = int(os.getenv("REDIS_PORT", 6379))
-STREAM_KEY  = os.getenv("METRICS_STREAM_KEY", "metrics_stream")
-INTERVAL    = int(os.getenv("AGENT_INTERVAL", 5))
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+STREAM_KEY = os.getenv("METRICS_STREAM_KEY", "metrics_stream")
+INTERVAL   = int(os.getenv("AGENT_INTERVAL", 5))
 
-# Prefer explicit NODE_ID env, fall back to hostname + short uuid
+# Prefer explicit NODE_ID env; fall back to hostname + short uuid
 NODE_ID = os.getenv("NODE_ID") or f"{socket.gethostname()}-{str(uuid.uuid4())[:8]}"
 
-# ── Redis connection with retry ──────────────────────────────────
+setup_json_logging("metrics_agent")
+setup_metrics("metrics_agent")
+setup_metrics_server(port=9095)
+log = get_logger("metrics_agent")
+
+
+# ── Redis connection — exponential back-off ───────────────────────
 def get_redis_client() -> redis.Redis:
     for attempt in range(20):
+        delay = min(2 ** attempt, 30)
         try:
             client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
             client.ping()
-            log.info(f"Connected to Redis at {REDIS_HOST}:{REDIS_PORT}")
+            log.info(
+                "redis_connected",
+                extra={"host": REDIS_HOST, "port": REDIS_PORT, "node_id": NODE_ID},
+            )
             return client
-        except redis.ConnectionError as e:
-            log.warning(f"Redis not ready (attempt {attempt+1}): {e}")
-            time.sleep(3)
+        except redis.ConnectionError as exc:
+            log.warning(
+                "redis_not_ready",
+                extra={"attempt": attempt + 1, "retry_in_s": delay, "error": str(exc)},
+            )
+            time.sleep(delay)
     raise RuntimeError("Cannot connect to Redis after 20 attempts")
 
-# ── Metric collection ────────────────────────────────────────────
+
+# ── Metric collection ─────────────────────────────────────────────
 def collect_metrics() -> dict:
-    cpu    = psutil.cpu_percent(interval=1)
-    mem    = psutil.virtual_memory().percent
-    disk   = psutil.disk_usage("/").percent
+    """Gather CPU, memory, disk, and simulate latency/RPS from load average."""
+    cpu  = psutil.cpu_percent(interval=1)
+    mem  = psutil.virtual_memory().percent
+    disk = psutil.disk_usage(Path("/")).percent
 
-    # Simulate latency and RPS from process counts / load avg
-    load = psutil.getloadavg()[0] if hasattr(psutil, "getloadavg") else cpu / 100.0
-    # Latency: baseline 20ms + noise proportional to load
-    import random
-    latency = round(20 + load * 30 + random.gauss(0, 5), 2)
-    latency = max(5.0, latency)
-
-    # RPS: simulate between 50–500, driven by load
-    rps = round(max(1, 50 + load * 80 + random.gauss(0, 10)), 2)
+    # On platforms without getloadavg (Windows), fall back to cpu fraction
+    load    = psutil.getloadavg()[0] if hasattr(psutil, "getloadavg") else cpu / 100.0
+    latency = round(max(5.0, 20 + load * 30 + random.gauss(0, 5)), 2)
+    rps     = round(max(1.0, 50 + load * 80 + random.gauss(0, 10)), 2)
 
     return {
         "node_id":          NODE_ID,
@@ -72,23 +88,30 @@ def collect_metrics() -> dict:
     }
 
 
-# ── Main loop ────────────────────────────────────────────────────
-def main():
-    log.info(f"Starting metrics agent  node_id={NODE_ID}  interval={INTERVAL}s")
+# ── Main loop ─────────────────────────────────────────────────────
+def main() -> None:
+    log.info(
+        "metrics_agent_starting",
+        extra={"node_id": NODE_ID, "interval_s": INTERVAL},
+    )
     r = get_redis_client()
 
     while True:
         try:
             metrics = collect_metrics()
-            # Publish to Redis Stream
             r.xadd(STREAM_KEY, {k: str(v) for k, v in metrics.items()})
             log.info(
-                f"node={NODE_ID} cpu={metrics['cpu_usage']}% "
-                f"mem={metrics['memory_usage']}% lat={metrics['latency_ms']}ms "
-                f"rps={metrics['requests_per_sec']}"
+                "metrics_published",
+                extra={
+                    "node_id":    NODE_ID,
+                    "cpu":        metrics["cpu_usage"],
+                    "mem":        metrics["memory_usage"],
+                    "latency_ms": metrics["latency_ms"],
+                    "rps":        metrics["requests_per_sec"],
+                },
             )
-        except Exception as e:
-            log.error(f"Error collecting/sending metrics: {e}")
+        except Exception as exc:
+            log.error("metrics_publish_error", extra={"error": str(exc)})
 
         time.sleep(INTERVAL)
 

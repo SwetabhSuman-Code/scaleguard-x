@@ -1,0 +1,131 @@
+{
+  "__inputs": [],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" },
+    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
+    { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
+    { "type": "panel", "id": "barchart", "name": "Bar chart", "version": "" }
+  ],
+  "description": "ScaleGuard X — autoscaling event history: worker count over time, scale-up/down decisions",
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Current Worker Count",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "options": { "colorMode": "background", "graphMode": "area" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "scaleguard_active_workers",
+          "legendFormat": "workers"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Total Scale-Up Events",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "color": { "fixedColor": "green", "mode": "fixed" } } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "scaleguard_scaling_decisions_total{direction=\"up\"}",
+          "legendFormat": "scale-up"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Total Scale-Down Events",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "color": { "fixedColor": "orange", "mode": "fixed" } } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "scaleguard_scaling_decisions_total{direction=\"down\"}",
+          "legendFormat": "scale-down"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Worker Count Over Time",
+      "type": "timeseries",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 4 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": { "lineWidth": 2, "fillOpacity": 15 }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "scaleguard_active_workers",
+          "legendFormat": "active workers"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Scaling Decisions Rate (per min)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "rate(scaleguard_scaling_decisions_total[5m]) * 60",
+          "legendFormat": "{{direction}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Predicted RPS (Forecast vs Actual)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "scaleguard_predicted_rps",
+          "legendFormat": "predicted rps"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "rate(http_requests_total{job=\"api_gateway\"}[1m])",
+          "legendFormat": "actual rps"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["scaleguard", "autoscaling"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "name": "DS_PROMETHEUS",
+        "query": "prometheus",
+        "refresh": 1,
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": { "from": "now-3h", "to": "now" },
+  "timezone": "browser",
+  "title": "ScaleGuard X — Autoscaling Events",
+  "uid": "scaleguard-autoscaling",
+  "version": 1
+}

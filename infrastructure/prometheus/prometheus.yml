@@ -1,0 +1,88 @@
+# ================================================================
+# ScaleGuard X — Prometheus Scrape Configuration
+# Scrapes all service /metrics endpoints every 15 seconds
+# ================================================================
+
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+  scrape_timeout:      10s
+  external_labels:
+    cluster: scaleguard-x
+    env:     development
+
+# ── Alerting (connect to Alertmanager when added) ─────────────────
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['alertmanager:9093']
+
+# ── Rule files ────────────────────────────────────────────────────
+# rule_files:
+#   - "rules/*.yml"
+
+# ── Scrape configs ────────────────────────────────────────────────
+scrape_configs:
+
+  # Prometheus self-monitoring
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # API Gateway
+  - job_name: api_gateway
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['api_gateway:9090']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: api_gateway
+
+  # Ingestion Service
+  - job_name: ingestion_service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['ingestion_service:9091']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: ingestion_service
+
+  # Anomaly Engine
+  - job_name: anomaly_engine
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['anomaly_engine:9092']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: anomaly_engine
+
+  # Prediction Engine
+  - job_name: prediction_engine
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['prediction_engine:9093']
+
+  # Autoscaler
+  - job_name: autoscaler
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['autoscaler:9094']
+
+  # Metrics Agent (host)
+  - job_name: metrics_agent
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['metrics_agent:9095']
+
+  # PostgreSQL Exporter (optional — add postgres_exporter service)
+  # - job_name: postgres
+  #   static_configs:
+  #     - targets: ['postgres_exporter:9187']
+
+  # Redis Exporter (optional — add redis_exporter service)
+  # - job_name: redis
+  #   static_configs:
+  #     - targets: ['redis_exporter:9121']

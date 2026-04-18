@@ -1,0 +1,63 @@
+# ================================================================
+# ScaleGuard X — Development Configuration
+# Used locally with Docker Compose
+# ================================================================
+
+database:
+  host:     postgres_db
+  port:     5432
+  name:     scaleguard
+  pool_min: 2
+  pool_max: 10
+
+redis:
+  host: redis_queue
+  port: 6379
+
+logging:
+  level:  DEBUG
+  format: json
+
+services:
+  api_gateway:
+    host: api_gateway
+    port: 8000
+    cors_origins: ["*"]
+
+  ingestion:
+    batch_size: 100
+    interval_s: 2
+
+  anomaly_engine:
+    cpu_threshold:     85.0
+    latency_threshold: 500.0
+    memory_threshold:  90.0
+    run_interval_s:    10
+
+  prediction_engine:
+    horizon_minutes:  10
+    history_minutes:  60
+    run_interval_s:   30
+
+  autoscaler:
+    min_workers:          1
+    max_workers:          8
+    scale_up_threshold:   0.75
+    scale_down_threshold: 0.35
+    run_interval_s:       15
+
+  metrics_agent:
+    interval_s: 5
+
+observability:
+  prometheus_port: 9090
+  jaeger_host:     jaeger
+  jaeger_port:     6831
+  grafana_port:    3001
+
+retention:
+  metrics_days:       30
+  anomalies_days:     90
+  alerts_days:        60
+  predictions_days:   7
+  scaling_events_days: 90

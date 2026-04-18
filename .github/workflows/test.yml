@@ -1,0 +1,179 @@
+name: ScaleGuard X — CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  PYTHON_VERSION: "3.11"
+  # Dummy secrets for CI — no real DB/Redis in unit test stage
+  POSTGRES_USER:     ci_user
+  POSTGRES_PASSWORD: ci_password
+  POSTGRES_DB:       ci_db
+  POSTGRES_HOST:     localhost
+  POSTGRES_PORT:     "5432"
+  REDIS_HOST:        localhost
+  REDIS_PORT:        "6379"
+
+jobs:
+  # ── 1. Lint & Type Check ──────────────────────────────────────
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install lint tools
+        run: pip install black ruff mypy types-redis
+
+      - name: black — format check
+        run: black --check --diff .
+
+      - name: ruff — lint
+        run: ruff check .
+
+      - name: mypy — type check (api_gateway)
+        run: |
+          pip install -r api_gateway/requirements.txt
+          mypy api_gateway/main.py lib/
+
+      - name: mypy — type check (autoscaler)
+        run: |
+          pip install -r autoscaler/requirements.txt
+          mypy autoscaler/main.py
+
+      - name: mypy — type check (ingestion_service)
+        run: |
+          pip install -r ingestion_service/requirements.txt
+          mypy ingestion_service/main.py
+
+      - name: mypy — type check (anomaly_engine)
+        run: |
+          pip install -r anomaly_engine/requirements.txt
+          mypy anomaly_engine/main.py
+
+      - name: mypy — type check (prediction_engine)
+        run: |
+          pip install -r prediction_engine/requirements.txt
+          mypy prediction_engine/main.py
+
+  # ── 2. Unit Tests ─────────────────────────────────────────────
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install all service deps
+        run: |
+          pip install pytest pytest-asyncio pytest-cov
+          pip install -r api_gateway/requirements.txt
+          pip install -r anomaly_engine/requirements.txt
+          pip install -r prediction_engine/requirements.txt
+          pip install -r ingestion_service/requirements.txt
+          pip install -r autoscaler/requirements.txt
+          pip install -r metrics_agent/requirements.txt
+          pip install -r worker_cluster/requirements.txt
+
+      - name: Run unit tests
+        run: |
+          pytest tests/ -m "unit" \
+            --cov=. \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=80
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+
+  # ── 3. Integration Tests (with real Postgres + Redis) ─────────
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER:     ${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+          POSTGRES_DB:       ${{ env.POSTGRES_DB }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci_user"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install deps
+        run: |
+          pip install pytest pytest-asyncio pytest-cov
+          pip install -r api_gateway/requirements.txt
+          pip install -r anomaly_engine/requirements.txt
+          pip install -r prediction_engine/requirements.txt
+          pip install -r ingestion_service/requirements.txt
+
+      - name: Apply DB schema
+        env:
+          PGPASSWORD: ${{ env.POSTGRES_PASSWORD }}
+        run: |
+          psql -h localhost -U ${{ env.POSTGRES_USER }} -d ${{ env.POSTGRES_DB }} \
+               -f infrastructure/sql/init.sql
+
+      - name: Run integration tests
+        run: pytest tests/ -m "integration" -v
+
+  # ── 4. Security Scan (Trivy) ─────────────────────────────────
+  security:
+    name: Trivy Security Scan
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          ignore-unfixed: true
+          format: table

@@ -1,0 +1,64 @@
+# ================================================================
+# ScaleGuard X — Staging Configuration
+# Mirrors prod but with relaxed scaling and verbose logging
+# ================================================================
+
+database:
+  host:     "${POSTGRES_HOST}"
+  port:     5432
+  name:     "${POSTGRES_DB}"
+  pool_min: 3
+  pool_max: 15
+  ssl_mode: require
+
+redis:
+  host: "${REDIS_HOST}"
+  port: 6379
+
+logging:
+  level:  INFO
+  format: json
+
+services:
+  api_gateway:
+    host: api_gateway
+    port: 8000
+    cors_origins: ["https://staging.scaleguard.internal"]
+
+  ingestion:
+    batch_size: 200
+    interval_s: 2
+
+  anomaly_engine:
+    cpu_threshold:     90.0
+    latency_threshold: 600.0
+    memory_threshold:  92.0
+    run_interval_s:    10
+
+  prediction_engine:
+    horizon_minutes:  10
+    history_minutes:  60
+    run_interval_s:   30
+
+  autoscaler:
+    min_workers:          1
+    max_workers:          6
+    scale_up_threshold:   0.75
+    scale_down_threshold: 0.35
+    run_interval_s:       15
+
+  metrics_agent:
+    interval_s: 5
+
+observability:
+  prometheus_port: 9090
+  jaeger_host:     "${JAEGER_AGENT_HOST}"
+  jaeger_port:     6831
+  grafana_port:    3001
+
+retention:
+  metrics_days:        30
+  anomalies_days:      90
+  alerts_days:         60
+  predictions_days:    7
+  scaling_events_days: 90

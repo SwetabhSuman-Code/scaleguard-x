@@ -1,0 +1,64 @@
+# ================================================================
+# ScaleGuard X — Root Project Configuration
+# Covers: black, ruff, mypy, pytest for all services
+# ================================================================
+
+[tool.black]
+line-length    = 100
+target-version = ["py311"]
+skip-magic-trailing-comma = false
+
+# ── Ruff (fast linter replacing flake8 + isort) ──────────────────
+[tool.ruff]
+line-length    = 100
+target-version = "py311"
+src            = [
+  "api_gateway", "anomaly_engine", "autoscaler",
+  "ingestion_service", "metrics_agent", "prediction_engine",
+  "worker_cluster", "lib",
+]
+
+[tool.ruff.lint]
+select  = ["E", "F", "W", "I", "B", "UP", "N", "ANN"]
+ignore  = [
+  "ANN101",  # missing type annotation for self
+  "ANN102",  # missing type annotation for cls
+  "ANN401",  # dynamically typed expressions (Any)
+  "B008",    # do not perform function call in default argument
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["lib"]
+
+# ── mypy ──────────────────────────────────────────────────────────
+[tool.mypy]
+python_version          = "3.11"
+strict                  = false
+ignore_missing_imports  = true
+disallow_untyped_defs   = true
+warn_return_any         = true
+warn_unused_ignores     = true
+exclude                 = ["dashboard/", "terraform/", "k8s/"]
+
+# ── pytest ────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths    = ["tests"]
+asyncio_mode = "auto"
+addopts      = "-v --tb=short --strict-markers"
+markers      = [
+  "unit: fast in-process tests (no external deps)",
+  "integration: tests that require running containers",
+]
+
+# ── coverage ──────────────────────────────────────────────────────
+[tool.coverage.run]
+source   = [
+  "api_gateway", "anomaly_engine", "autoscaler",
+  "ingestion_service", "metrics_agent", "prediction_engine",
+  "worker_cluster", "lib",
+]
+omit     = ["*/tests/*", "*/__pycache__/*"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true

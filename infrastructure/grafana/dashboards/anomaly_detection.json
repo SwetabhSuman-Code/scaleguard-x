@@ -1,0 +1,164 @@
+{
+  "__inputs": [],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" },
+    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
+    { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
+    { "type": "panel", "id": "piechart", "name": "Pie chart", "version": "" }
+  ],
+  "description": "ScaleGuard X — anomaly detection dashboard: anomaly rate, ML vs rule-based split, severity distribution",
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Anomalies Detected (Last Hour)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 20 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "increase(scaleguard_anomalies_detected_total[1h])",
+          "legendFormat": "anomalies/hour"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Rule-Based Anomalies",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "color": { "fixedColor": "orange", "mode": "fixed" } } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "increase(scaleguard_anomalies_detected_total{type=\"rule_based\"}[1h])",
+          "legendFormat": "rule-based"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "ML-Based Anomalies",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "color": { "fixedColor": "purple", "mode": "fixed" } } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "increase(scaleguard_anomalies_detected_total{type=\"ml_based\"}[1h])",
+          "legendFormat": "ml-based"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Total Anomalies Detected",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "scaleguard_anomalies_detected_total",
+          "legendFormat": "all-time"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Anomaly Rate Over Time",
+      "type": "timeseries",
+      "gridPos": { "h": 10, "w": 16, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "rate(scaleguard_anomalies_detected_total{type=\"rule_based\"}[5m]) * 60",
+          "legendFormat": "rule-based /min"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "rate(scaleguard_anomalies_detected_total{type=\"ml_based\"}[5m]) * 60",
+          "legendFormat": "ml-based /min"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Detection Method Split",
+      "type": "piechart",
+      "gridPos": { "h": 10, "w": 8, "x": 16, "y": 4 },
+      "options": { "pieType": "donut", "displayLabels": ["name", "percent"] },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "scaleguard_anomalies_detected_total",
+          "legendFormat": "{{type}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Anomaly Score Distribution (recent)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 14 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.5 },
+              { "color": "red", "value": 0.8 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "scaleguard_latest_anomaly_score",
+          "legendFormat": "{{node_id}}"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["scaleguard", "anomaly", "ml"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "name": "DS_PROMETHEUS",
+        "query": "prometheus",
+        "refresh": 1,
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timezone": "browser",
+  "title": "ScaleGuard X — Anomaly Detection",
+  "uid": "scaleguard-anomaly",
+  "version": 1
+}

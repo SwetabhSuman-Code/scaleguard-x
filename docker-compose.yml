@@ -3,17 +3,20 @@ version: "3.9"
 # ================================================================
 # ScaleGuard X — Docker Compose Orchestration
 # Run: docker compose up --build
+# Prerequisites: copy .env.example → .env and fill in secrets
 # ================================================================
 
 x-common-env: &common-env
   POSTGRES_HOST:      postgres_db
   POSTGRES_PORT:      "5432"
-  POSTGRES_USER:      scaleguard
-  POSTGRES_PASSWORD:  scaleguard_secret
-  POSTGRES_DB:        scaleguard
+  POSTGRES_USER:      ${POSTGRES_USER}
+  POSTGRES_PASSWORD:  ${POSTGRES_PASSWORD}
+  POSTGRES_DB:        ${POSTGRES_DB}
   REDIS_HOST:         redis_queue
   REDIS_PORT:         "6379"
-  METRICS_STREAM_KEY: metrics_stream
+  METRICS_STREAM_KEY: ${METRICS_STREAM_KEY:-metrics_stream}
+  LOG_LEVEL:          ${LOG_LEVEL:-INFO}
+  SENTRY_DSN:         ${SENTRY_DSN:-}
 
 services:
 
@@ -23,16 +26,16 @@ services:
     container_name: scaleguard-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER:     scaleguard
-      POSTGRES_PASSWORD: scaleguard_secret
-      POSTGRES_DB:       scaleguard
+      POSTGRES_USER:     ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB:       ${POSTGRES_DB}
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./infrastructure/sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U scaleguard -d scaleguard"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -87,8 +90,8 @@ services:
     restart: unless-stopped
     environment:
       <<: *common-env
-      INGESTION_BATCH_SIZE: "100"
-      INGESTION_INTERVAL:   "2"
+      INGESTION_BATCH_SIZE: "${INGESTION_BATCH_SIZE:-100}"
+      INGESTION_INTERVAL:   "${INGESTION_INTERVAL:-2}"
     depends_on:
       postgres_db:
         condition: service_healthy
@@ -103,9 +106,13 @@ services:
     restart: unless-stopped
     environment:
       <<: *common-env
-      AGENT_INTERVAL:      "5"
+      AGENT_INTERVAL:      "${AGENT_INTERVAL:-5}"
       API_GATEWAY_HOST:    api_gateway
       API_GATEWAY_PORT:    "8000"
+    labels:
+      - "com.docker.compose.service=worker_cluster"
+      - "com.docker.compose.project=scaleguard-x"
+      - "scaleguard.role=worker"
     deploy:
       replicas: 2
     depends_on:
@@ -121,8 +128,8 @@ services:
     restart: unless-stopped
     environment:
       <<: *common-env
-      AGENT_INTERVAL: "5"
-      NODE_ID:        "host-agent-1"
+      AGENT_INTERVAL: "${AGENT_INTERVAL:-5}"
+      NODE_ID:        "${NODE_ID:-host-agent-1}"
     depends_on:
       redis_queue:
         condition: service_healthy
@@ -136,10 +143,10 @@ services:
     restart: unless-stopped
     environment:
       <<: *common-env
-      ANOMALY_CPU_THRESHOLD:     "85.0"
-      ANOMALY_LATENCY_THRESHOLD: "500.0"
-      ANOMALY_MEMORY_THRESHOLD:  "90.0"
-      ANOMALY_RUN_INTERVAL:      "10"
+      ANOMALY_CPU_THRESHOLD:     "${ANOMALY_CPU_THRESHOLD:-85.0}"
+      ANOMALY_LATENCY_THRESHOLD: "${ANOMALY_LATENCY_THRESHOLD:-500.0}"
+      ANOMALY_MEMORY_THRESHOLD:  "${ANOMALY_MEMORY_THRESHOLD:-90.0}"
+      ANOMALY_RUN_INTERVAL:      "${ANOMALY_RUN_INTERVAL:-10}"
     depends_on:
       postgres_db:
         condition: service_healthy
@@ -153,9 +160,9 @@ services:
     restart: unless-stopped
     environment:
       <<: *common-env
-      PREDICTION_HORIZON_MINUTES: "10"
-      PREDICTION_HISTORY_MINUTES: "60"
-      PREDICTION_RUN_INTERVAL:    "30"
+      PREDICTION_HORIZON_MINUTES: "${PREDICTION_HORIZON_MINUTES:-10}"
+      PREDICTION_HISTORY_MINUTES: "${PREDICTION_HISTORY_MINUTES:-60}"
+      PREDICTION_RUN_INTERVAL:    "${PREDICTION_RUN_INTERVAL:-30}"
     depends_on:
       postgres_db:
         condition: service_healthy
@@ -169,14 +176,15 @@ services:
     restart: unless-stopped
     environment:
       <<: *common-env
-      AUTOSCALER_MIN_WORKERS:         "1"
-      AUTOSCALER_MAX_WORKERS:         "8"
-      AUTOSCALER_SCALE_UP_THRESHOLD:  "0.75"
-      AUTOSCALER_SCALE_DOWN_THRESHOLD: "0.35"
-      AUTOSCALER_RUN_INTERVAL:        "15"
-      WORKER_SERVICE_NAME:            "scaleguard-x-worker_cluster"
+      AUTOSCALER_MIN_WORKERS:          "${AUTOSCALER_MIN_WORKERS:-1}"
+      AUTOSCALER_MAX_WORKERS:          "${AUTOSCALER_MAX_WORKERS:-8}"
+      AUTOSCALER_SCALE_UP_THRESHOLD:   "${AUTOSCALER_SCALE_UP_THRESHOLD:-0.75}"
+      AUTOSCALER_SCALE_DOWN_THRESHOLD: "${AUTOSCALER_SCALE_DOWN_THRESHOLD:-0.35}"
+      AUTOSCALER_RUN_INTERVAL:         "${AUTOSCALER_RUN_INTERVAL:-15}"
+      WORKER_SERVICE_NAME:             "${WORKER_SERVICE_NAME:-scaleguard-x-worker_cluster}"
     volumes:
       # Mount Docker socket so autoscaler can manage worker containers
+      # Windows: //./pipe/docker_engine is handled automatically by the code
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres_db:
@@ -197,9 +205,58 @@ services:
       api_gateway:
         condition: service_healthy
 
+  # ── 11. Prometheus ─────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: scaleguard-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+
+  # ── 12. Grafana ────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: scaleguard-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER:     ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP:     "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    depends_on:
+      - prometheus
+
+  # ── 13. Jaeger (Distributed Tracing) ──────────────────────────
+  jaeger:
+    image: jaegertracing/all-in-one:1.56
+    container_name: scaleguard-jaeger
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "6831:6831/udp" # Jaeger agent (thrift compact)
+      - "4317:4317"     # OTLP gRPC
+      - "4318:4318"     # OTLP HTTP
+
 volumes:
   pg_data:
   redis_data:
+  prometheus_data:
+  grafana_data:
 
 networks:
   default:

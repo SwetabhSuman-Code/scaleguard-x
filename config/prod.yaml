@@ -1,0 +1,79 @@
+# ================================================================
+# ScaleGuard X — Production Configuration
+# AWS ECS (US-East-1) — Enterprise MVP
+# ================================================================
+
+database:
+  host:     "${POSTGRES_HOST}"
+  port:     5432
+  name:     "${POSTGRES_DB}"
+  pool_min: 5
+  pool_max: 20
+  ssl_mode: require
+  statement_timeout_ms: 30000
+  connect_timeout_s: 10
+
+redis:
+  host: "${REDIS_HOST}"
+  port: 6379
+  ssl:  true
+
+logging:
+  level:  WARNING
+  format: json
+
+services:
+  api_gateway:
+    host: api_gateway
+    port: 8000
+    cors_origins:
+      - "https://app.scaleguard.io"
+      - "https://dashboard.scaleguard.io"
+
+  ingestion:
+    batch_size: 500
+    interval_s: 1
+
+  anomaly_engine:
+    cpu_threshold:     90.0
+    latency_threshold: 600.0
+    memory_threshold:  92.0
+    run_interval_s:    10
+
+  prediction_engine:
+    horizon_minutes:  10
+    history_minutes:  60
+    run_interval_s:   30
+
+  autoscaler:
+    min_workers:          2
+    max_workers:          8
+    scale_up_threshold:   0.75
+    scale_down_threshold: 0.35
+    run_interval_s:       15
+
+  metrics_agent:
+    interval_s: 5
+
+observability:
+  prometheus_port: 9090
+  jaeger_host:     "${JAEGER_AGENT_HOST}"
+  jaeger_port:     6831
+  grafana_port:    3001
+
+retention:
+  metrics_days:        30
+  anomalies_days:      90
+  alerts_days:         60
+  predictions_days:    7
+  scaling_events_days: 90
+
+sla:
+  uptime_target_pct:   99.9
+  rto_minutes:         60
+  rpo_minutes:         15
+
+dr:
+  backup_s3_bucket:  "scaleguard-backups-prod"
+  backup_frequency:  daily
+  pitr_enabled:      true

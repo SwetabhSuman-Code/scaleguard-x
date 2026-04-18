@@ -1,0 +1,6 @@
+"""
+ScaleGuard X — shared lib requirements
+These are bundled inside each service's Docker image via its own requirements.txt.
+This file documents what lib/ itself depends on.
+"""
+# No external deps — lib uses only Python stdlib (json, logging, threading, asyncio)

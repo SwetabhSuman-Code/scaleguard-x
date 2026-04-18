@@ -1,6 +1,15 @@
+# ================================================================
+# ScaleGuard X — Worker Cluster
+# Build context: project root (so lib/ is available)
+# ================================================================
 FROM python:3.11-slim
+
 WORKDIR /app
-COPY requirements.txt .
+
+COPY worker_cluster/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
+
+COPY lib/ ./lib/
+COPY worker_cluster/ .
+
 CMD ["python", "worker.py"]

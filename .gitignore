@@ -1,0 +1,69 @@
+# ── Python build artifacts ────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+.eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib64/
+*.so
+
+# ── Virtual environments ──────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+.env.local
+.env.*.local
+
+# ── CRITICAL: never commit real secrets ──────────────────────────
+.env
+
+# ── IDE / editor files ────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Docker ────────────────────────────────────────────────────────
+.docker/
+
+# ── Testing ───────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ── Logs ──────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Node / dashboard ──────────────────────────────────────────────
+dashboard/node_modules/
+dashboard/.next/
+dashboard/dist/
+dashboard/build/
+
+# ── Requirements lock files (keep .txt but skip compiled lock) ────
+requirements.lock
+
+# ── Terraform ─────────────────────────────────────────────────────
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/.terraform.lock.hcl
