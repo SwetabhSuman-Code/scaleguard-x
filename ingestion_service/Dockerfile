@@ -10,6 +10,6 @@ COPY ingestion_service/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY lib/ ./lib/
-COPY ingestion_service/ .
+COPY ingestion_service/ ./ingestion_service/
 
 CMD ["python", "main.py"]

@@ -10,6 +10,6 @@ COPY anomaly_engine/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY lib/ ./lib/
-COPY anomaly_engine/ .
+COPY anomaly_engine/ ./anomaly_engine/
 
 CMD ["python", "main.py"]

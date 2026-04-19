@@ -59,8 +59,8 @@ services:
   # ── 3. API Gateway ─────────────────────────────────────────────
   api_gateway:
     build:
-      context: ./api_gateway
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: api_gateway/Dockerfile
     container_name: scaleguard-api-gateway
     restart: unless-stopped
     environment:
@@ -84,8 +84,8 @@ services:
   # ── 4. Metrics Ingestion Service ───────────────────────────────
   ingestion_service:
     build:
-      context: ./ingestion_service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ingestion_service/Dockerfile
     container_name: scaleguard-ingestion
     restart: unless-stopped
     environment:
@@ -101,8 +101,8 @@ services:
   # ── 5. Worker Cluster (initial 2 replicas) ─────────────────────
   worker_cluster:
     build:
-      context: ./worker_cluster
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: worker_cluster/Dockerfile
     restart: unless-stopped
     environment:
       <<: *common-env
@@ -122,8 +122,8 @@ services:
   # ── 6. Metrics Agent (host node agent) ────────────────────────
   metrics_agent:
     build:
-      context: ./metrics_agent
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: metrics_agent/Dockerfile
     container_name: scaleguard-agent
     restart: unless-stopped
     environment:
@@ -154,8 +154,8 @@ services:
   # ── 8. Prediction Engine ───────────────────────────────────────
   prediction_engine:
     build:
-      context: ./prediction_engine
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: prediction_engine/Dockerfile
     container_name: scaleguard-prediction
     restart: unless-stopped
     environment:
@@ -170,8 +170,8 @@ services:
   # ── 9. Autoscaler ──────────────────────────────────────────────
   autoscaler:
     build:
-      context: ./autoscaler
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: autoscaler/Dockerfile
     container_name: scaleguard-autoscaler
     restart: unless-stopped
     environment:

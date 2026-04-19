@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY lib/ ./lib/
 
 # Copy service source
-COPY api_gateway/ .
+COPY api_gateway/ ./api_gateway/
 
 EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
