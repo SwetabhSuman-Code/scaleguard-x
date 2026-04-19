@@ -117,11 +117,9 @@ class MetricsTaskSet(TaskSet):
             json=payload,
             catch_response=True
         ) as response:
-            if response.status_code == 200:
+            if response.status_code in [200, 201, 202]:
                 response.success()
                 logger.debug(f"✓ Metrics posted: {payload['node_id']}")
-            elif response.status_code == 201:
-                response.success()
             else:
                 response.failure(f"Unexpected status {response.status_code}")
                 logger.error(f"✗ Failed: {response.status_code}")
@@ -139,10 +137,11 @@ class MetricsTaskSet(TaskSet):
                 json=payload,
                 catch_response=True
             ) as response:
-                if response.status_code not in [200, 201]:
+                if response.status_code in [200, 201, 202]:
+                    response.success()
+                else:
                     response.failure(f"Batch post failed: {response.status_code}")
                     break
-                response.success()
     
     @task(1)
     def health_check(self):
@@ -161,11 +160,13 @@ class MetricsUser(HttpUser):
     
     def on_start(self):
         """Initialize user."""
-        logger.info(f"User {self.client_id} started")
+        user_id = f"user-{id(self) % 10000}"
+        logger.info(f"User {user_id} started")
     
     def on_stop(self):
         """Cleanup."""
-        logger.info(f"User {self.client_id} stopped")
+        user_id = f"user-{id(self) % 10000}"
+        logger.info(f"User {user_id} stopped")
 
 
 class FastMetricsUser(FastHttpUser):
@@ -174,7 +175,8 @@ class FastMetricsUser(FastHttpUser):
     wait_time = between(0.5, 1.5)  # Faster requests
     
     def on_start(self):
-        logger.info(f"FastUser {self.client_id} started (high-throughput)")
+        user_id = f"fast-user-{id(self) % 10000}"
+        logger.info(f"{user_id} started (high-throughput)")
 
 
 class SpikeMetricsUser(HttpUser):

@@ -51,11 +51,11 @@ class RateLimitConfig:
         if self.user_rps is None:
             # Default: different limits by role
             self.user_rps = {
-                "admin": 1000.0,      # High limit
-                "operator": 500.0,
-                "viewer": 100.0,
-                "service": 500.0,
-                "guest": 10.0,        # Limited
+                "admin": 10000.0,      # High limit
+                "operator": 5000.0,
+                "viewer": 1000.0,
+                "service": 5000.0,
+                "guest": 3000.0,       # Increased for load testing
             }
 
 
