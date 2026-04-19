@@ -35,15 +35,12 @@ load_dotenv()
 REDIS_HOST = os.getenv("REDIS_HOST", "redis_queue")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 STREAM_KEY = os.getenv("METRICS_STREAM_KEY", "metrics_stream")
-INTERVAL   = int(os.getenv("AGENT_INTERVAL", 5))
-API_URL    = (
+INTERVAL = int(os.getenv("AGENT_INTERVAL", 5))
+API_URL = (
     f"http://{os.getenv('API_GATEWAY_HOST', 'api_gateway')}"
     f":{os.getenv('API_GATEWAY_PORT', '8000')}"
 )
-NODE_ID = (
-    os.getenv("NODE_ID")
-    or f"worker-{socket.gethostname()}-{str(uuid.uuid4())[:6]}"
-)
+NODE_ID = os.getenv("NODE_ID") or f"worker-{socket.gethostname()}-{str(uuid.uuid4())[:6]}"
 
 setup_json_logging("worker_cluster")
 log = get_logger("worker_cluster")
@@ -52,7 +49,7 @@ log = get_logger("worker_cluster")
 # ── Redis — retry loop ────────────────────────────────────────────
 def get_redis() -> redis.Redis:
     for attempt in range(20):
-        delay = min(2 ** attempt, 30)
+        delay = min(2**attempt, 30)
         try:
             r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
             r.ping()
@@ -72,36 +69,34 @@ class LoadSimulator:
     """Generates realistic sinusoidal + noisy metrics."""
 
     def __init__(self) -> None:
-        self.t         = 0
-        self.phase     = random.uniform(0, 6.28)
-        self.base_cpu  = random.uniform(20, 45)
+        self.t = 0
+        self.phase = random.uniform(0, 6.28)
+        self.base_cpu = random.uniform(20, 45)
 
     def tick(self) -> dict:
         self.t += 1
 
         # CPU: base + sinusoidal wave + spikes
-        cpu = self.base_cpu + 20 * abs(
-            0.5 * (1 + (self.t % 120) / 60)
-        ) + random.gauss(0, 4)
+        cpu = self.base_cpu + 20 * abs(0.5 * (1 + (self.t % 120) / 60)) + random.gauss(0, 4)
         # Occasional artificial stress (simulates a load spike)
         if self.t % 180 == 0:
             cpu += random.uniform(30, 50)
         cpu = min(99.9, max(2.0, cpu))
 
-        mem     = 35 + 25 * abs((self.t % 90) / 90) + random.gauss(0, 3)
-        mem     = min(99.0, max(10.0, mem))
+        mem = 35 + 25 * abs((self.t % 90) / 90) + random.gauss(0, 3)
+        mem = min(99.0, max(10.0, mem))
         latency = max(5.0, 15 + cpu * 0.8 + random.gauss(0, 8))
-        rps     = max(1.0, 50 + cpu * 2.5 + random.gauss(0, 15))
-        disk    = min(99.0, max(0.0, 40.0 + random.gauss(0, 1)))
+        rps = max(1.0, 50 + cpu * 2.5 + random.gauss(0, 15))
+        disk = min(99.0, max(0.0, 40.0 + random.gauss(0, 1)))
 
         return {
-            "node_id":          NODE_ID,
-            "timestamp":        time.time(),
-            "cpu_usage":        round(cpu, 2),
-            "memory_usage":     round(mem, 2),
-            "latency_ms":       round(latency, 2),
+            "node_id": NODE_ID,
+            "timestamp": time.time(),
+            "cpu_usage": round(cpu, 2),
+            "memory_usage": round(mem, 2),
+            "latency_ms": round(latency, 2),
             "requests_per_sec": round(rps, 2),
-            "disk_usage":       round(disk, 2),
+            "disk_usage": round(disk, 2),
         }
 
 
@@ -120,7 +115,7 @@ async def register_worker() -> None:
 # ── Main loop ─────────────────────────────────────────────────────
 def main() -> None:
     log.info("worker_starting", extra={"node_id": NODE_ID, "interval_s": INTERVAL})
-    r   = get_redis()
+    r = get_redis()
     sim = LoadSimulator()
 
     # Best-effort API registration probe
@@ -136,11 +131,11 @@ def main() -> None:
             log.info(
                 "metrics_emitted",
                 extra={
-                    "node_id":    NODE_ID,
-                    "cpu":        metrics["cpu_usage"],
-                    "mem":        metrics["memory_usage"],
+                    "node_id": NODE_ID,
+                    "cpu": metrics["cpu_usage"],
+                    "mem": metrics["memory_usage"],
                     "latency_ms": metrics["latency_ms"],
-                    "rps":        metrics["requests_per_sec"],
+                    "rps": metrics["requests_per_sec"],
                 },
             )
         except Exception as exc:

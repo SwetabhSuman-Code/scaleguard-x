@@ -22,34 +22,34 @@ logger = logging.getLogger(__name__)
 
 class Permission(str, Enum):
     """Available permission scopes."""
-    
+
     # Metrics & Monitoring
     METRICS_READ = "metrics:read"
     METRICS_WRITE = "metrics:write"
-    
+
     # Scaling & Autoscaling
     SCALING_READ = "scaling:read"
     SCALING_WRITE = "scaling:write"
     SCALING_EXECUTE = "scaling:execute"
-    
+
     # Predictions
     PREDICTIONS_READ = "predictions:read"
     PREDICTIONS_WRITE = "predictions:write"
-    
+
     # System Configuration
     CONFIG_READ = "config:read"
     CONFIG_WRITE = "config:write"
     CONFIG_ADMIN = "config:admin"
-    
+
     # User & Access Management
     USER_READ = "user:read"
     USER_WRITE = "user:write"
     USER_ADMIN = "user:admin"
-    
+
     # Logs & Diagnostics
     LOGS_READ = "logs:read"
     LOGS_ADMIN = "logs:admin"
-    
+
     # Services
     SERVICE_HEALTH = "service:health"
     SERVICE_SHUTDOWN = "service:shutdown"
@@ -58,6 +58,7 @@ class Permission(str, Enum):
 @dataclass
 class Role:
     """Role definition with permissions."""
+
     name: str
     description: str = ""
     permissions: Set[Permission] = field(default_factory=set)
@@ -81,7 +82,7 @@ class Role:
 class AccessControl:
     """
     Access control decision based on roles and permissions.
-    
+
     Attributes:
         user_id: User identifier
         roles: List of assigned role names
@@ -91,7 +92,7 @@ class AccessControl:
     def __init__(self, user_id: str, roles: List[str]):
         """
         Initialize access control.
-        
+
         Args:
             user_id: User identifier
             roles: List of role names
@@ -123,10 +124,10 @@ class AccessControl:
 class RBACManager:
     """
     Manager for roles and access control.
-    
+
     Maintains role definitions and evaluates access decisions based on
     user roles and required permissions.
-    
+
     Attributes:
         roles: Dict of role name -> Role instance
         _default_roles: Built-in role definitions
@@ -140,21 +141,15 @@ class RBACManager:
 
     def _init_default_roles(self) -> None:
         """Initialize default roles with standard permissions."""
-        
+
         # Admin: Full access
-        admin_role = Role(
-            name="admin",
-            description="Full system access"
-        )
+        admin_role = Role(name="admin", description="Full system access")
         for perm in Permission:
             admin_role.add_permission(perm)
         self.register_role(admin_role)
 
         # Operator: Manage workloads and scaling
-        operator_role = Role(
-            name="operator",
-            description="Manage scaling and workloads"
-        )
+        operator_role = Role(name="operator", description="Manage scaling and workloads")
         operator_permissions = [
             Permission.METRICS_READ,
             Permission.SCALING_READ,
@@ -168,10 +163,7 @@ class RBACManager:
         self.register_role(operator_role)
 
         # Viewer: Read-only access
-        viewer_role = Role(
-            name="viewer",
-            description="Read-only monitoring access"
-        )
+        viewer_role = Role(name="viewer", description="Read-only monitoring access")
         viewer_permissions = [
             Permission.METRICS_READ,
             Permission.SCALING_READ,
@@ -183,10 +175,7 @@ class RBACManager:
         self.register_role(viewer_role)
 
         # Service: Machine-to-machine access
-        service_role = Role(
-            name="service",
-            description="Service-to-service authentication"
-        )
+        service_role = Role(name="service", description="Service-to-service authentication")
         service_permissions = [
             Permission.METRICS_READ,
             Permission.METRICS_WRITE,
@@ -200,10 +189,7 @@ class RBACManager:
         self.register_role(service_role)
 
         # Guest: Very limited read-only
-        guest_role = Role(
-            name="guest",
-            description="Limited public read access"
-        )
+        guest_role = Role(name="guest", description="Limited public read access")
         guest_permissions = [
             Permission.METRICS_READ,
             Permission.SERVICE_HEALTH,
@@ -215,7 +201,7 @@ class RBACManager:
     def register_role(self, role: Role) -> None:
         """
         Register a role.
-        
+
         Args:
             role: Role instance to register
         """
@@ -225,7 +211,7 @@ class RBACManager:
     def unregister_role(self, role_name: str) -> None:
         """
         Unregister a role.
-        
+
         Args:
             role_name: Name of role to remove
         """
@@ -236,10 +222,10 @@ class RBACManager:
     def get_role(self, role_name: str) -> Optional[Role]:
         """
         Get role by name.
-        
+
         Args:
             role_name: Role name
-        
+
         Returns:
             Role instance or None if not found
         """
@@ -253,12 +239,12 @@ class RBACManager:
     ) -> AccessControl:
         """
         Evaluate access for user with given roles.
-        
+
         Args:
             user_id: User identifier
             role_names: List of role names
             required_permission: Permission to check (for validation)
-        
+
         Returns:
             AccessControl instance with accumulated permissions
         """
@@ -277,7 +263,7 @@ class RBACManager:
             logger.log(
                 log_level,
                 f"Access evaluation: user={user_id}, roles={role_names}, "
-                f"required={required_permission.value}, granted={has_access}"
+                f"required={required_permission.value}, granted={has_access}",
             )
         else:
             logger.debug(
@@ -297,12 +283,12 @@ class RBACManager:
     ) -> bool:
         """
         Check if user has required permission.
-        
+
         Args:
             user_id: User identifier
             role_names: List of role names
             required_permission: Required permission
-        
+
         Returns:
             True if user has permission, False otherwise
         """
@@ -312,10 +298,10 @@ class RBACManager:
     def get_role_permissions(self, role_name: str) -> Set[Permission]:
         """
         Get all permissions for a role.
-        
+
         Args:
             role_name: Role name
-        
+
         Returns:
             Set of permissions
         """
@@ -325,10 +311,10 @@ class RBACManager:
     def get_user_permissions(self, role_names: List[str]) -> Set[Permission]:
         """
         Get accumulated permissions from multiple roles.
-        
+
         Args:
             role_names: List of role names
-        
+
         Returns:
             Combined set of permissions
         """
@@ -347,27 +333,23 @@ class RBACManager:
     ) -> Role:
         """
         Create and register a custom role.
-        
+
         Args:
             role_name: Name for new role
             description: Role description
             permissions: List of permissions
-        
+
         Returns:
             Registered Role instance
         """
-        role = Role(
-            name=role_name,
-            description=description,
-            permissions=set(permissions)
-        )
+        role = Role(name=role_name, description=description, permissions=set(permissions))
         self.register_role(role)
         return role
 
     def list_roles(self) -> List[Role]:
         """
         List all registered roles.
-        
+
         Returns:
             List of Role instances
         """
@@ -376,7 +358,7 @@ class RBACManager:
     def list_permissions(self) -> List[Permission]:
         """
         List all available permissions.
-        
+
         Returns:
             List of Permission enum values
         """
@@ -385,7 +367,7 @@ class RBACManager:
     def get_role_graph(self) -> Dict[str, Dict[str, any]]:
         """
         Get role definitions for documentation.
-        
+
         Returns:
             Dict mapping role names to metadata
         """

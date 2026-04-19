@@ -16,12 +16,14 @@ import time
 from unittest.mock import Mock, patch
 
 from api_gateway.middleware.rate_limiter import (
-    RateLimiter, RateLimitConfig, RateLimitStrategy,
-    TokenBucket, SlidingWindowCounter, FixedWindowCounter
+    RateLimiter,
+    RateLimitConfig,
+    RateLimitStrategy,
+    TokenBucket,
+    SlidingWindowCounter,
+    FixedWindowCounter,
 )
-from api_gateway.tracing.tracer import (
-    Tracer, TracingConfig, Span, RequestTracer
-)
+from api_gateway.tracing.tracer import Tracer, TracingConfig, Span, RequestTracer
 
 
 class TestTokenBucket:
@@ -42,16 +44,16 @@ class TestTokenBucket:
         """Request denied when out of tokens."""
         bucket = TokenBucket(capacity=1, refill_rate=1)
         bucket.tokens = 0
-        
+
         assert bucket.allow_request(1) is False
 
     def test_token_refill(self):
         """Tokens refill over time."""
         bucket = TokenBucket(capacity=10, refill_rate=10)  # 10 tokens/sec
         bucket.tokens = 0
-        
+
         time.sleep(0.2)  # Wait 0.2 seconds
-        
+
         # Should have ~2 tokens after refill
         assert bucket.allow_request(1) is True
 
@@ -59,9 +61,9 @@ class TestTokenBucket:
         """Tokens capped at capacity."""
         bucket = TokenBucket(capacity=5, refill_rate=10)
         bucket.tokens = 0
-        
+
         time.sleep(1)  # Wait for refill
-        
+
         # Should not exceed capacity
         assert bucket.tokens <= 5
 
@@ -75,7 +77,7 @@ class TestTokenBucket:
         """Get time until next token available."""
         bucket = TokenBucket(capacity=1, refill_rate=1)
         bucket.tokens = 0
-        
+
         reset_time = bucket.get_reset_after()
         assert 0.9 < reset_time < 1.1  # Should be ~1 second
 
@@ -97,19 +99,19 @@ class TestSlidingWindow:
     def test_request_denied_exceeding_limit(self):
         """Request denied when exceeding limit."""
         window = SlidingWindowCounter(window_size=60)
-        
+
         for _ in range(5):
             window.allow_request(limit=5)
-        
+
         assert window.allow_request(limit=5) is False
 
     def test_old_requests_removed(self):
         """Requests outside window removed."""
         window = SlidingWindowCounter(window_size=0.1)  # 100ms window
-        
+
         window.allow_request(limit=100)
         time.sleep(0.15)
-        
+
         # Old request should be removed, new one allowed
         assert len(window.requests) == 1
         assert window.allow_request(limit=1) is True
@@ -131,22 +133,22 @@ class TestFixedWindow:
     def test_request_denied_exceeding_limit(self):
         """Request denied when exceeding limit."""
         window = FixedWindowCounter(window_seconds=60)
-        
+
         for _ in range(5):
             window.allow_request(limit=5)
-        
+
         assert window.allow_request(limit=5) is False
 
     def test_window_reset(self):
         """Counter resets on new window."""
         window = FixedWindowCounter(window_seconds=1)
-        
+
         window.allow_request(limit=5)
         assert window.count == 1
-        
+
         # Simulate window change
         window.window_start = int(time.time() / 1) * 1 - 1
-        
+
         result = window.allow_request(limit=5)
         assert result is True
         assert window.count == 1  # Reset
@@ -162,10 +164,7 @@ class TestRateLimiterInitialization:
 
     def test_custom_configuration(self):
         """Accepts custom configuration."""
-        config = RateLimitConfig(
-            strategy=RateLimitStrategy.SLIDING_WINDOW.value,
-            global_rps=500.0
-        )
+        config = RateLimitConfig(strategy=RateLimitStrategy.SLIDING_WINDOW.value, global_rps=500.0)
         limiter = RateLimiter(config)
         assert limiter.strategy == RateLimitStrategy.SLIDING_WINDOW.value
 
@@ -180,10 +179,8 @@ class TestRateLimiterTokenBucket:
 
     def test_check_limit_allowed(self):
         """Request allowed within limit."""
-        limiter = RateLimiter(
-            RateLimitConfig(strategy=RateLimitStrategy.TOKEN_BUCKET.value)
-        )
-        
+        limiter = RateLimiter(RateLimitConfig(strategy=RateLimitStrategy.TOKEN_BUCKET.value))
+
         allowed, metadata = limiter.check_limit("user1", role="operator")
         assert allowed is True
         assert metadata["remaining"] >= 0
@@ -194,14 +191,14 @@ class TestRateLimiterTokenBucket:
             RateLimitConfig(
                 strategy=RateLimitStrategy.TOKEN_BUCKET.value,
                 bucket_capacity=1.0,
-                refill_rate=0.1  # Very slow refill
+                refill_rate=0.1,  # Very slow refill
             )
         )
-        
+
         # Exhaust tokens
         for _ in range(10):
             limiter.check_limit("attacker", role="guest")
-        
+
         # Next request should be denied
         allowed, _ = limiter.check_limit("attacker", role="guest")
         assert not allowed
@@ -209,18 +206,18 @@ class TestRateLimiterTokenBucket:
     def test_role_based_limits(self):
         """Different roles get different limits."""
         limiter = RateLimiter()
-        
+
         # Admin has high limit
         admin_result = limiter.check_limit("user1", role="admin")
         # Guest has low limit
         guest_result = limiter.check_limit("user2", role="guest")
-        
+
         assert admin_result[1]["limit"] > guest_result[1]["limit"]
 
     def test_reset_after_time(self):
         """Metadata includes reset time."""
         limiter = RateLimiter()
-        
+
         allowed, metadata = limiter.check_limit("user1")
         assert "reset_after" in metadata
         assert metadata["reset_after"] >= 0
@@ -232,12 +229,9 @@ class TestRateLimiterSlidingWindow:
     def test_sliding_window_strategy(self):
         """Sliding window counts requests correctly."""
         limiter = RateLimiter(
-            RateLimitConfig(
-                strategy=RateLimitStrategy.SLIDING_WINDOW.value,
-                window_size_seconds=1
-            )
+            RateLimitConfig(strategy=RateLimitStrategy.SLIDING_WINDOW.value, window_size_seconds=1)
         )
-        
+
         # Make requests within limit
         for i in range(5):
             allowed, _ = limiter.check_limit(f"user", role="operator")
@@ -246,17 +240,16 @@ class TestRateLimiterSlidingWindow:
     def test_window_expiration(self):
         """Requests outside window don't count."""
         config = RateLimitConfig(
-            strategy=RateLimitStrategy.SLIDING_WINDOW.value,
-            window_size_seconds=0.1
+            strategy=RateLimitStrategy.SLIDING_WINDOW.value, window_size_seconds=0.1
         )
         limiter = RateLimiter(config)
-        
+
         # Make request
         limiter.check_limit("user", role="operator")
-        
+
         # Wait for window to age
         time.sleep(0.15)
-        
+
         # New request should be allowed (old one aged out)
         allowed, metadata = limiter.check_limit("user", role="operator")
         assert allowed
@@ -267,26 +260,21 @@ class TestRateLimiterFixedWindow:
 
     def test_fixed_window_strategy(self):
         """Fixed window counts requests."""
-        limiter = RateLimiter(
-            RateLimitConfig(strategy=RateLimitStrategy.FIXED_WINDOW.value)
-        )
-        
+        limiter = RateLimiter(RateLimitConfig(strategy=RateLimitStrategy.FIXED_WINDOW.value))
+
         allowed, _ = limiter.check_limit("user", role="operator")
         assert allowed
 
     def test_fixed_window_reset(self):
         """Requests reset on window boundary."""
         limiter = RateLimiter(
-            RateLimitConfig(
-                strategy=RateLimitStrategy.FIXED_WINDOW.value,
-                window_size_seconds=1
-            )
+            RateLimitConfig(strategy=RateLimitStrategy.FIXED_WINDOW.value, window_size_seconds=1)
         )
-        
+
         allowed1, _ = limiter.check_limit("user")
         time.sleep(1.1)
         allowed2, _ = limiter.check_limit("user")
-        
+
         assert allowed1 and allowed2
 
 
@@ -296,14 +284,14 @@ class TestRateLimiterReset:
     def test_reset_identifier(self):
         """Reset clears rate limit for identifier."""
         limiter = RateLimiter()
-        
+
         # Make some requests
         for _ in range(5):
             limiter.check_limit("user1")
-        
+
         # Reset
         limiter.reset_identifier("user1")
-        
+
         # Should be fresh
         allowed, metadata = limiter.check_limit("user1")
         assert allowed
@@ -315,11 +303,11 @@ class TestRateLimiterStats:
     def test_get_stats(self):
         """Get rate limiter stats."""
         limiter = RateLimiter()
-        
+
         # Make some requests to track identifiers
         for i in range(3):
             limiter.check_limit(f"user{i}")
-        
+
         stats = limiter.get_stats()
         assert "strategy" in stats
         assert "tracked_identifiers" in stats
@@ -330,13 +318,8 @@ class TestSpanCreation:
 
     def test_span_initialization(self):
         """Span initializes with metadata."""
-        span = Span(
-            name="test_op",
-            trace_id="trace123",
-            span_id="span456",
-            start_time=time.time()
-        )
-        
+        span = Span(name="test_op", trace_id="trace123", span_id="span456", start_time=time.time())
+
         assert span.name == "test_op"
         assert span.trace_id == "trace123"
         assert span.status == "OK"
@@ -344,45 +327,30 @@ class TestSpanCreation:
     def test_span_duration(self):
         """Span calculates duration."""
         start = time.time()
-        span = Span(
-            name="test_op",
-            trace_id="trace123",
-            span_id="span456",
-            start_time=start
-        )
-        
+        span = Span(name="test_op", trace_id="trace123", span_id="span456", start_time=start)
+
         time.sleep(0.1)
         span.end()
-        
+
         assert 90 < span.duration_ms < 110  # ~100ms
 
     def test_span_attributes(self):
         """Span stores attributes."""
-        span = Span(
-            name="test_op",
-            trace_id="trace123",
-            span_id="span456",
-            start_time=time.time()
-        )
-        
+        span = Span(name="test_op", trace_id="trace123", span_id="span456", start_time=time.time())
+
         span.set_attribute("user_id", "user123")
         span.set_attribute("status", "success")
-        
+
         assert span.attributes["user_id"] == "user123"
         assert span.attributes["status"] == "success"
 
     def test_span_events(self):
         """Span records events."""
-        span = Span(
-            name="test_op",
-            trace_id="trace123",
-            span_id="span456",
-            start_time=time.time()
-        )
-        
+        span = Span(name="test_op", trace_id="trace123", span_id="span456", start_time=time.time())
+
         span.add_event("checkpoint_1", {"progress": 50})
         span.add_event("checkpoint_2", {"progress": 100})
-        
+
         assert len(span.events) == 2
         assert span.events[0]["name"] == "checkpoint_1"
 
@@ -394,14 +362,14 @@ class TestTracerInitialization:
         """Tracer initializes with config."""
         config = TracingConfig(service_name="test-service")
         tracer = Tracer(config)
-        
+
         assert tracer.config.service_name == "test-service"
 
     def test_disabled_tracing(self):
         """Tracer can be disabled."""
         config = TracingConfig(enabled=False)
         tracer = Tracer(config)
-        
+
         trace_id = tracer.start_trace()
         assert trace_id == ""
 
@@ -412,10 +380,10 @@ class TestTracerTraces:
     def test_start_and_end_trace(self):
         """Start and end traces."""
         tracer = Tracer()
-        
+
         trace_id = tracer.start_trace()
         assert trace_id != ""
-        
+
         tracer.end_trace()
         assert tracer.get_current_trace_id() is None
 
@@ -423,15 +391,15 @@ class TestTracerTraces:
         """Trace can contain multiple spans."""
         tracer = Tracer()
         tracer.start_trace()
-        
+
         span1 = tracer.start_span("operation_1")
         span1.end()
-        
+
         span2 = tracer.start_span("operation_2")
         span2.end()
-        
+
         tracer.end_trace()
-        
+
         # Both spans created
         assert span1.name == "operation_1"
         assert span2.name == "operation_2"
@@ -440,14 +408,14 @@ class TestTracerTraces:
         """Spans can be nested."""
         tracer = Tracer()
         trace_id = tracer.start_trace()
-        
+
         parent = tracer.start_span("parent")
         child = tracer.start_span("child")
         child.end()
         parent.end()
-        
+
         tracer.end_trace()
-        
+
         # Child should have parent ID
         assert child.parent_span_id == parent.span_id
 
@@ -455,12 +423,12 @@ class TestTracerTraces:
         """Context manager for automatic span lifecycle."""
         tracer = Tracer()
         tracer.start_trace()
-        
+
         try:
             with tracer.trace_context("operation") as span:
                 span.set_attribute("status", "running")
                 time.sleep(0.05)
-            
+
             # Span should be ended
             assert span.end_time is not None
             assert span.status == "OK"
@@ -471,7 +439,7 @@ class TestTracerTraces:
         """Context manager marks errors in spans."""
         tracer = Tracer()
         tracer.start_trace()
-        
+
         try:
             with tracer.trace_context("operation") as span:
                 raise ValueError("Test error")
@@ -479,7 +447,7 @@ class TestTracerTraces:
             pass
         finally:
             tracer.end_trace()
-        
+
         # Span should be marked with error
         assert span.status == "ERROR"
         assert span.error is not None
@@ -492,15 +460,15 @@ class TestTracerExport:
         """Export trace to external format."""
         tracer = Tracer()
         trace_id = tracer.start_trace()
-        
+
         span = tracer.start_span("operation")
         span.set_attribute("key", "value")
         span.end()
-        
+
         tracer.end_trace()
-        
+
         exported = tracer.export_trace(trace_id)
-        
+
         assert exported["trace_id"] == trace_id
         assert "spans" in exported
         assert len(exported["spans"]) > 0
@@ -513,30 +481,30 @@ class TestRequestTracer:
         """Extract trace ID from headers."""
         tracer = Tracer()
         req_tracer = RequestTracer(tracer)
-        
+
         headers = {"traceparent": "00-abc123xyz-def456-01"}
         trace_id = req_tracer.extract_trace_context(headers)
-        
+
         assert trace_id != ""
 
     def test_extract_custom_trace_id(self):
         """Extract custom trace ID header."""
         tracer = Tracer()
         req_tracer = RequestTracer(tracer)
-        
+
         headers = {"x-trace-id": "custom-123"}
         trace_id = req_tracer.extract_trace_context(headers)
-        
+
         assert trace_id == "custom-123"
 
     def test_generate_missing_trace_id(self):
         """Generate new trace ID if not in headers."""
         tracer = Tracer()
         req_tracer = RequestTracer(tracer)
-        
+
         headers = {}
         trace_id = req_tracer.extract_trace_context(headers)
-        
+
         assert trace_id != ""
         assert len(trace_id) > 10
 
@@ -544,13 +512,9 @@ class TestRequestTracer:
         """Start trace for HTTP request."""
         tracer = Tracer()
         req_tracer = RequestTracer(tracer)
-        
-        trace_id = req_tracer.start_request_trace(
-            method="GET",
-            path="/api/metrics",
-            headers={}
-        )
-        
+
+        trace_id = req_tracer.start_request_trace(method="GET", path="/api/metrics", headers={})
+
         assert trace_id != ""
 
 
@@ -560,13 +524,13 @@ class TestTracerStatistics:
     def test_get_stats(self):
         """Get tracer statistics."""
         tracer = Tracer()
-        
+
         tracer.start_trace()
         tracer.start_span("op1").end()
         tracer.end_trace()
-        
+
         stats = tracer.get_stats()
-        
+
         assert "enabled" in stats
         assert "active_spans" in stats
         assert "service" in stats

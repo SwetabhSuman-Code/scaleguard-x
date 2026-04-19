@@ -1,6 +1,7 @@
 """
 ScaleGuard X — Unit Tests: Structured Logging
 """
+
 from __future__ import annotations
 
 import json
@@ -32,6 +33,7 @@ class TestJsonLogging:
 
     def test_set_and_clear_context(self) -> None:
         from lib.logging_config import _ContextFilter
+
         set_log_context(request_id="abc123", trace_id="xyz")
         ctx = getattr(_ContextFilter._local, "ctx", {})
         assert ctx.get("request_id") == "abc123"

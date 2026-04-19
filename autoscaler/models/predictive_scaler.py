@@ -26,34 +26,35 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PredictiveScalerConfig:
     """Configuration for predictive autoscaler."""
+
     # PID tuning
     pid_kp: float = 1.0
     pid_ki: float = 0.05
     pid_kd: float = 0.5
     pid_setpoint: float = 70.0
-    
+
     # Prophet integration (forecast-based scaling)
     prophet_enabled: bool = True
     prophet_headroom_factor: float = 0.15  # 15% safety margin above predicted
-    
+
     # LSTM spike detection
     lstm_enabled: bool = True
     spike_probability_threshold: float = 0.6  # Trigger emergency scaling at 60% spike probability
     spike_scaling_boost: float = 1.5  # Multiply scaling action by 1.5 during spikes
-    
+
     # Scaling bounds
     min_scaling_action: float = -5.0  # Maximum scale-up action (negative)
     max_scaling_action: float = 10.0  # Maximum scale-down action (positive)
-    
+
     # Thrashing prevention
     min_decision_interval: float = 300.0  # No scaling decisions more than every 5 minutes
-    min_scaling_magnitude: float = 0.5   # Ignore scaling decisions < 0.5 instances
+    min_scaling_magnitude: float = 0.5  # Ignore scaling decisions < 0.5 instances
 
 
 class ScalingDecision:
     """
     Container for a scaling decision with full justification.
-    
+
     Attributes:
         action: Number of instances to add (positive) or remove (negative)
         factors: Dict of contributing factors with their values/scores
@@ -89,11 +90,11 @@ class ScalingDecision:
 class PredictiveScaler:
     """
     Multi-factor intelligent autoscaler.
-    
+
     Uses PID control as base, Prophet predictions for proactive scaling,
     and LSTM spike detection for emergency decisions. Respects thrashing
     prevention to avoid rapid scale-up/down oscillations.
-    
+
     Attributes:
         config: PredictiveScalerConfig with all settings
         pid_controller: Internal PIDController instance
@@ -109,7 +110,7 @@ class PredictiveScaler:
     ):
         """
         Initialize predictive scaler.
-        
+
         Args:
             config: PredictiveScalerConfig (uses defaults if None)
             prophet_module: ProphetForecaster instance (optional for predictions)
@@ -147,16 +148,16 @@ class PredictiveScaler:
     ) -> ScalingDecision:
         """
         Make a scaling decision based on all available signals.
-        
+
         Args:
             current_utilization: Current CPU/memory utilization (0-100)
             recent_data: Recent metrics for Prophet/LSTM (timeseries data)
             current_metrics: Current system metrics (optional context)
             dt: Time since last decision (seconds)
-        
+
         Returns:
             ScalingDecision with action and justification
-        
+
         Raises:
             ValueError: If current_utilization outside [0, 100]
         """
@@ -164,9 +165,7 @@ class PredictiveScaler:
         decision.factors["current_utilization"] = current_utilization
 
         if not 0 <= current_utilization <= 100:
-            raise ValueError(
-                f"Utilization must be 0-100, got {current_utilization}"
-            )
+            raise ValueError(f"Utilization must be 0-100, got {current_utilization}")
 
         # Check thrashing prevention
         time_since_last_decision = time.time() - self.last_scaling_decision_time
@@ -193,15 +192,15 @@ class PredictiveScaler:
                 decision.factors["predicted_peak"] = predicted_peak
 
                 # If predicted peak exceeds setpoint + headroom, add scaling
-                headroom_threshold = (
-                    self.config.pid_setpoint * (1 + self.config.prophet_headroom_factor)
+                headroom_threshold = self.config.pid_setpoint * (
+                    1 + self.config.prophet_headroom_factor
                 )
                 if predicted_peak > headroom_threshold:
                     # Scale proactively based on how far above threshold we are
                     excess = predicted_peak - headroom_threshold
                     prophet_component = -min(
                         0.8 * abs(self.config.min_scaling_action),
-                        0.1 * excess / 10.0  # 0.1 instances per 10% exceed
+                        0.1 * excess / 10.0,  # 0.1 instances per 10% exceed
                     )
                     decision.reason = (
                         f"Prophet detected predicted peak {predicted_peak:.1f}% "
@@ -246,8 +245,7 @@ class PredictiveScaler:
 
         # Apply final clamping
         final_action = max(
-            self.config.min_scaling_action,
-            min(self.config.max_scaling_action, combined_action)
+            self.config.min_scaling_action, min(self.config.max_scaling_action, combined_action)
         )
 
         # Ignore trivial scaling decisions (thrashing prevention)
@@ -276,7 +274,7 @@ class PredictiveScaler:
         logger.log(
             log_level,
             f"Scaling decision: action={decision.action:+.2f} instances, "
-            f"reason={decision.reason}"
+            f"reason={decision.reason}",
         )
 
         return decision
@@ -288,7 +286,7 @@ class PredictiveScaler:
     def get_performance_metrics(self) -> Dict[str, float]:
         """
         Get performance metrics over decision history.
-        
+
         Returns:
             Dict with average_action, min_action, max_action, emergency_count, etc.
         """

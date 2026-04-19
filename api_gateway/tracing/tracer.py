@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Span:
     """A single trace span (operation)."""
+
     name: str
     trace_id: str
     span_id: str
@@ -59,11 +60,7 @@ class Span:
 
     def add_event(self, name: str, attributes: Optional[Dict] = None) -> None:
         """Add an event to the span."""
-        self.events.append({
-            "name": name,
-            "timestamp": time.time(),
-            "attributes": attributes or {}
-        })
+        self.events.append({"name": name, "timestamp": time.time(), "attributes": attributes or {}})
 
     def end(self) -> None:
         """Mark span as ended."""
@@ -89,6 +86,7 @@ class Span:
 @dataclass
 class TracingConfig:
     """Tracing configuration."""
+
     enabled: bool = True
     service_name: str = "scaleguard-api"
     environment: str = "production"
@@ -104,14 +102,14 @@ class TracingConfig:
 class Tracer:
     """
     Simple distributed tracer for request correlation and performance analysis.
-    
+
     Features:
       - Automatic trace ID generation and propagation
       - Parent-child span relationships
       - Span attributes for business data
       - Event logging within spans
       - Export via OpenTelemetry protocol
-    
+
     Attributes:
         config: TracingConfig
         _spans: Active trace spans
@@ -121,7 +119,7 @@ class Tracer:
     def __init__(self, config: Optional[TracingConfig] = None):
         """
         Initialize tracer.
-        
+
         Args:
             config: TracingConfig (uses defaults if None)
         """
@@ -129,7 +127,7 @@ class Tracer:
         self._spans: Dict[str, Span] = {}
         self._trace_id_stack: list = []
         self._span_id_stack: list = []
-        
+
         logger.info(
             f"Tracer initialized: service={self.config.service_name}, "
             f"enabled={self.config.enabled}"
@@ -142,11 +140,11 @@ class Tracer:
     ) -> str:
         """
         Start a new trace (top-level operation).
-        
+
         Args:
             trace_id: Optional custom trace ID (auto-generated if not provided)
             attributes: Optional trace-level attributes
-        
+
         Returns:
             Trace ID for correlation
         """
@@ -155,7 +153,7 @@ class Tracer:
 
         trace_id = trace_id or str(uuid.uuid4())
         self._trace_id_stack.append(trace_id)
-        
+
         # Create root span
         span = self._create_span("trace_root", trace_id, None, attributes)
         self._spans[span.span_id] = span
@@ -178,11 +176,11 @@ class Tracer:
     ) -> Span:
         """
         Start a new span within current trace.
-        
+
         Args:
             name: Span operation name
             attributes: Optional span attributes
-        
+
         Returns:
             Span instance to continue operation
         """
@@ -198,7 +196,8 @@ class Tracer:
 
         logger.debug(
             f"Span started: {name} (parent={parent_span_id[:8]}...)"
-            if parent_span_id else f"Span started: {name}"
+            if parent_span_id
+            else f"Span started: {name}"
         )
 
         return span
@@ -206,7 +205,7 @@ class Tracer:
     def end_span(self, span: Span) -> None:
         """
         End a span.
-        
+
         Args:
             span: Span to end
         """
@@ -233,7 +232,7 @@ class Tracer:
             span_id=str(uuid.uuid4()),
             parent_span_id=parent_span_id,
             start_time=time.time(),
-            attributes=attributes or {}
+            attributes=attributes or {},
         )
         return span
 
@@ -245,7 +244,7 @@ class Tracer:
     ) -> ContextManager[Span]:
         """
         Context manager for automatic span tracking.
-        
+
         Usage:
             with tracer.trace_context("operation_name") as span:
                 span.set_attribute("user_id", user_id)
@@ -278,36 +277,30 @@ class Tracer:
 
     def get_trace_spans(self, trace_id: str) -> list:
         """Get all spans in a trace."""
-        return [
-            span for span in self._spans.values()
-            if span.trace_id == trace_id
-        ]
+        return [span for span in self._spans.values() if span.trace_id == trace_id]
 
     def export_trace(self, trace_id: str) -> Dict[str, Any]:
         """
         Export trace for external system (Jaeger, etc).
-        
+
         Args:
             trace_id: Trace to export
-        
+
         Returns:
             Trace data in exportable format
         """
         spans = self.get_trace_spans(trace_id)
-        
+
         # Start with root span
         root_span = next(
-            (s for s in spans if s.parent_span_id is None),
-            spans[0] if spans else None
+            (s for s in spans if s.parent_span_id is None), spans[0] if spans else None
         )
 
         if not root_span:
             return {"trace_id": trace_id, "spans": []}
 
         exported_spans = [span.to_dict() for span in spans]
-        request_level_span_count = len(
-            [span for span in spans if span.name != "trace_root"]
-        )
+        request_level_span_count = len([span for span in spans if span.name != "trace_root"])
 
         return {
             "trace_id": trace_id,
@@ -322,7 +315,7 @@ class Tracer:
     def clear_inactive_traces(self, older_than_seconds: int = 3600) -> None:
         """
         Remove traces older than threshold.
-        
+
         Args:
             older_than_seconds: Age threshold
         """
@@ -341,7 +334,7 @@ class Tracer:
     def get_stats(self) -> Dict[str, Any]:
         """Get tracer statistics."""
         active_traces = len(set(s.trace_id for s in self._spans.values()))
-        
+
         return {
             "enabled": self.config.enabled,
             "active_spans": len(self._spans),
@@ -353,7 +346,7 @@ class Tracer:
 class RequestTracer:
     """
     High-level wrapper for HTTP request tracing.
-    
+
     Automatically creates traces for API requests and propagates
     trace context through headers.
     """
@@ -361,7 +354,7 @@ class RequestTracer:
     def __init__(self, tracer: Tracer):
         """
         Initialize request tracer.
-        
+
         Args:
             tracer: Tracer instance
         """
@@ -370,15 +363,15 @@ class RequestTracer:
     def extract_trace_context(self, headers: Dict[str, str]) -> str:
         """
         Extract trace ID from request headers.
-        
+
         Looks for standard trace context headers:
           - traceparent (W3C standard)
           - x-trace-id (custom)
           - x-correlation-id (common)
-        
+
         Args:
             headers: Request headers
-        
+
         Returns:
             Trace ID (generated if not found)
         """
@@ -388,13 +381,9 @@ class RequestTracer:
             parts = traceparent.split("-")
             if len(parts) >= 2:
                 return parts[1]
-        
+
         # Try other standard headers in order
-        return (
-            headers.get("x-trace-id") or
-            headers.get("x-correlation-id") or
-            str(uuid.uuid4())
-        )
+        return headers.get("x-trace-id") or headers.get("x-correlation-id") or str(uuid.uuid4())
 
     def start_request_trace(
         self,
@@ -404,12 +393,12 @@ class RequestTracer:
     ) -> str:
         """
         Start trace for HTTP request.
-        
+
         Args:
             method: HTTP method
             path: Request path
             headers: Request headers
-        
+
         Returns:
             Trace ID
         """
@@ -420,7 +409,7 @@ class RequestTracer:
                 "http.method": method,
                 "http.path": path,
                 "http.scheme": "https",
-            }
+            },
         )
         return trace_id
 
@@ -431,7 +420,7 @@ class RequestTracer:
     ) -> None:
         """
         Add response metadata to current trace.
-        
+
         Args:
             status_code: HTTP status code
             duration_ms: Request duration in milliseconds

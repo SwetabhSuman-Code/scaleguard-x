@@ -224,9 +224,7 @@ def spawn_worker(
 def terminate_worker(docker_client: docker.DockerClient) -> bool:
     try:
         with _docker_cb:
-            containers = docker_client.containers.list(
-                filters={"label": "scaleguard.dynamic=true"}
-            )
+            containers = docker_client.containers.list(filters={"label": "scaleguard.dynamic=true"})
             if not containers:
                 return False
             target = containers[-1]

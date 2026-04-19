@@ -125,13 +125,7 @@ async def fetch_rps_frame(
     if frame.empty:
         return pd.DataFrame(columns=["ds", "y"])
 
-    frame = (
-        frame.set_index("ds")
-        .resample("5min")
-        .mean()
-        .dropna()
-        .reset_index()
-    )
+    frame = frame.set_index("ds").resample("5min").mean().dropna().reset_index()
     return frame
 
 

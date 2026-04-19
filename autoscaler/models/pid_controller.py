@@ -27,23 +27,24 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PIDConfig:
     """Configuration for PID controller tuning."""
-    kp: float = 1.0          # Proportional gain
-    ki: float = 0.05         # Integral gain
-    kd: float = 0.5          # Derivative gain
-    setpoint: float = 70.0   # Target utilization percentage
-    output_min: float = -5.0 # Most aggressive scale-up action
-    output_max: float = 10.0 # Most aggressive scale-down action
+
+    kp: float = 1.0  # Proportional gain
+    ki: float = 0.05  # Integral gain
+    kd: float = 0.5  # Derivative gain
+    setpoint: float = 70.0  # Target utilization percentage
+    output_min: float = -5.0  # Most aggressive scale-up action
+    output_max: float = 10.0  # Most aggressive scale-down action
     integral_max: float = 100.0  # Anti-windup threshold
 
 
 class PIDController:
     """
     PID controller for autoscaling decisions.
-    
+
     Converts current utilization metrics into scaling decisions using
     a tuned PID control loop. Designed for stability (no oscillation)
     and responsiveness (handles spikes quickly).
-    
+
     Attributes:
         config: PIDConfig with tuning parameters
         integral_error: Accumulated error for integral term
@@ -54,7 +55,7 @@ class PIDController:
     def __init__(self, config: Optional[PIDConfig] = None):
         """
         Initialize PID controller.
-        
+
         Args:
             config: PIDConfig instance (uses defaults if None)
         """
@@ -70,19 +71,15 @@ class PIDController:
             f"setpoint={self.config.setpoint}%"
         )
 
-    def update(
-        self,
-        current_utilization: float,
-        dt: Optional[float] = None
-    ) -> Dict[str, float]:
+    def update(self, current_utilization: float, dt: Optional[float] = None) -> Dict[str, float]:
         """
         Calculate scaling action based on current utilization.
-        
+
         Args:
             current_utilization: Current CPU/memory utilization (0-100)
             dt: Time delta in seconds. If None, calculated from last update.
                 Must be > 0 for derivative calculation to be meaningful.
-        
+
         Returns:
             Dict with keys:
                 - scaling_action: Recommended scaling change (instances to add/remove)
@@ -91,14 +88,12 @@ class PIDController:
                 - i_term: Integral component
                 - d_term: Derivative component
                 - integral: Accumulated integral error
-        
+
         Raises:
             ValueError: If current_utilization outside [0, 100] or dt < 0
         """
         if not 0 <= current_utilization <= 100:
-            raise ValueError(
-                f"Utilization must be 0-100, got {current_utilization}"
-            )
+            raise ValueError(f"Utilization must be 0-100, got {current_utilization}")
 
         # Calculate time delta if not provided
         if dt is None:
@@ -126,9 +121,7 @@ class PIDController:
         # Anti-windup: clamp integral to prevent excessive accumulation
         if abs(self.integral_error) > self.config.integral_max:
             self.integral_error = (
-                self.config.integral_max
-                if self.integral_error > 0
-                else -self.config.integral_max
+                self.config.integral_max if self.integral_error > 0 else -self.config.integral_max
             )
         i_term = self.config.ki * self.integral_error
 
@@ -144,10 +137,7 @@ class PIDController:
         raw_output = p_term + i_term + d_term
 
         # Clamp output to acceptable range
-        scaling_action = max(
-            self.config.output_min,
-            min(self.config.output_max, raw_output)
-        )
+        scaling_action = max(self.config.output_min, min(self.config.output_max, raw_output))
 
         logger.debug(
             f"PID Update: utilization={current_utilization:.1f}%, "
@@ -177,7 +167,7 @@ class PIDController:
     def get_state(self) -> Dict[str, float]:
         """
         Get current internal state for monitoring/debugging.
-        
+
         Returns:
             Dict with integral_error, last_error, error_history stats
         """
@@ -191,6 +181,7 @@ class PIDController:
             }
 
         import statistics
+
         return {
             "integral_error": self.integral_error,
             "last_error": self.last_error,
@@ -201,15 +192,10 @@ class PIDController:
             "error_max": max(self.error_history),
         }
 
-    def tune(
-        self,
-        kp: float,
-        ki: float,
-        kd: float
-    ) -> None:
+    def tune(self, kp: float, ki: float, kd: float) -> None:
         """
         Adjust PID tuning parameters dynamically.
-        
+
         Args:
             kp: New proportional gain
             ki: New integral gain
@@ -219,14 +205,12 @@ class PIDController:
         self.config.kp = kp
         self.config.ki = ki
         self.config.kd = kd
-        logger.info(
-            f"PID tuned: {old_config} -> ({kp}, {ki}, {kd})"
-        )
+        logger.info(f"PID tuned: {old_config} -> ({kp}, {ki}, {kd})")
 
     def clamp_output(self, min_val: float, max_val: float) -> None:
         """
         Update output clamping bounds.
-        
+
         Args:
             min_val: Minimum scaling action
             max_val: Maximum scaling action

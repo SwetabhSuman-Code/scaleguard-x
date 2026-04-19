@@ -43,9 +43,7 @@ class CircuitBreakerError(Exception):
         self.name = name
         self.reset_at = reset_at
         remaining = max(0.0, reset_at - time.monotonic())
-        super().__init__(
-            f"Circuit '{name}' is OPEN — retry in {remaining:.1f}s"
-        )
+        super().__init__(f"Circuit '{name}' is OPEN — retry in {remaining:.1f}s")
 
 
 class CircuitBreaker:
@@ -100,7 +98,9 @@ class CircuitBreaker:
         self._opened_at = time.monotonic()
         log.warning(
             "circuit_breaker state=OPEN name=%s failures=%d recovery_in=%.0fs",
-            self.name, self._failure_count, self.recovery_timeout,
+            self.name,
+            self._failure_count,
+            self.recovery_timeout,
         )
 
     def _reset(self) -> None:
@@ -119,9 +119,7 @@ class CircuitBreaker:
             assert self._opened_at is not None
             if time.monotonic() - self._opened_at >= self.recovery_timeout:
                 self._state = CircuitState.HALF_OPEN
-                log.info(
-                    "circuit_breaker state=HALF_OPEN name=%s (probing)", self.name
-                )
+                log.info("circuit_breaker state=HALF_OPEN name=%s (probing)", self.name)
                 return True
             return False
 
@@ -136,9 +134,7 @@ class CircuitBreaker:
 
     def _on_failure(self) -> None:
         self._failure_count += 1
-        if self._state == CircuitState.HALF_OPEN or (
-            self._failure_count >= self.failure_threshold
-        ):
+        if self._state == CircuitState.HALF_OPEN or (self._failure_count >= self.failure_threshold):
             self._trip()
 
     # ── Async context manager ─────────────────────────────────────
@@ -147,9 +143,7 @@ class CircuitBreaker:
         async with self._lock:
             if not self._allow_request():
                 assert self._opened_at is not None
-                raise CircuitBreakerError(
-                    self.name, self._opened_at + self.recovery_timeout
-                )
+                raise CircuitBreakerError(self.name, self._opened_at + self.recovery_timeout)
         return self
 
     async def __aexit__(
@@ -171,9 +165,7 @@ class CircuitBreaker:
     def __enter__(self) -> "CircuitBreaker":
         if not self._allow_request():
             assert self._opened_at is not None
-            raise CircuitBreakerError(
-                self.name, self._opened_at + self.recovery_timeout
-            )
+            raise CircuitBreakerError(self.name, self._opened_at + self.recovery_timeout)
         return self
 
     def __exit__(
@@ -193,16 +185,20 @@ class CircuitBreaker:
     def __call__(self, func: Callable) -> Callable:
         """Use as a decorator: @circuit_breaker"""
         if asyncio.iscoroutinefunction(func):
+
             @functools.wraps(func)
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 async with self:
                     return await func(*args, **kwargs)
+
             return async_wrapper
         else:
+
             @functools.wraps(func)
             def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
                 with self:
                     return func(*args, **kwargs)
+
             return sync_wrapper
 
     def __repr__(self) -> str:
@@ -214,6 +210,7 @@ class CircuitBreaker:
 
 # ── Pre-built breakers for shared services ────────────────────────
 # Each service imports these directly rather than creating their own.
+
 
 def make_postgres_breaker(service_name: str) -> CircuitBreaker:
     """Standard circuit breaker for PostgreSQL connections."""

@@ -42,23 +42,23 @@ PG_DSN = (
     f":{os.getenv('POSTGRES_PORT', '5432')}"
     f"/{os.getenv('POSTGRES_DB', 'scaleguard')}"
 )
-REDIS_URL    = f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_PORT', '6379')}"
-STREAM_KEY   = os.getenv("METRICS_STREAM_KEY", "metrics_stream")
-BATCH_SIZE   = int(os.getenv("INGESTION_BATCH_SIZE", 100))
+REDIS_URL = f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_PORT', '6379')}"
+STREAM_KEY = os.getenv("METRICS_STREAM_KEY", "metrics_stream")
+BATCH_SIZE = int(os.getenv("INGESTION_BATCH_SIZE", 100))
 POLL_WAIT_MS = int(os.getenv("INGESTION_INTERVAL", 2)) * 1000
 
 CONSUMER_GROUP = "ingestion_group"
-CONSUMER_NAME  = "ingestion_service_1"
+CONSUMER_NAME = "ingestion_service_1"
 
 # ── Circuit breakers ──────────────────────────────────────────────
-_pg_cb    = make_postgres_breaker("ingestion_service")
+_pg_cb = make_postgres_breaker("ingestion_service")
 _redis_cb = make_redis_breaker("ingestion_service")
 
 
 # ── DB Pool — exponential back-off ───────────────────────────────
 async def create_db_pool() -> asyncpg.Pool:
     for attempt in range(15):
-        delay = min(2 ** attempt, 30)
+        delay = min(2**attempt, 30)
         try:
             pool = await asyncpg.create_pool(
                 PG_DSN,
@@ -79,7 +79,7 @@ async def create_db_pool() -> asyncpg.Pool:
 # ── Redis — exponential back-off ─────────────────────────────────
 async def create_redis(url: str) -> aioredis.Redis:
     for attempt in range(15):
-        delay = min(2 ** attempt, 30)
+        delay = min(2**attempt, 30)
         try:
             r = aioredis.from_url(url, decode_responses=True)
             await r.ping()
@@ -114,15 +114,13 @@ def parse_entry(entry_data: dict) -> Optional[dict]:
     """Return a cleaned metric dict or None if the entry is malformed."""
     try:
         return {
-            "node_id":          entry_data["node_id"],
-            "timestamp":        datetime.fromtimestamp(
-                                    float(entry_data["timestamp"]), tz=timezone.utc
-                                ),
-            "cpu_usage":        float(entry_data["cpu_usage"]),
-            "memory_usage":     float(entry_data["memory_usage"]),
-            "latency_ms":       float(entry_data["latency_ms"]),
+            "node_id": entry_data["node_id"],
+            "timestamp": datetime.fromtimestamp(float(entry_data["timestamp"]), tz=timezone.utc),
+            "cpu_usage": float(entry_data["cpu_usage"]),
+            "memory_usage": float(entry_data["memory_usage"]),
+            "latency_ms": float(entry_data["latency_ms"]),
             "requests_per_sec": float(entry_data["requests_per_sec"]),
-            "disk_usage":       float(entry_data["disk_usage"]),
+            "disk_usage": float(entry_data["disk_usage"]),
         }
     except (KeyError, ValueError) as exc:
         log.warning("invalid_entry_skipped", extra={"error": str(exc)})
@@ -142,8 +140,13 @@ async def write_batch(pool: asyncpg.Pool, records: list[dict]) -> None:
     """Write a batch of metric records to Postgres."""
     rows = [
         (
-            r["node_id"], r["timestamp"], r["cpu_usage"], r["memory_usage"],
-            r["latency_ms"], r["requests_per_sec"], r["disk_usage"],
+            r["node_id"],
+            r["timestamp"],
+            r["cpu_usage"],
+            r["memory_usage"],
+            r["latency_ms"],
+            r["requests_per_sec"],
+            r["disk_usage"],
         )
         for r in records
     ]
@@ -180,8 +183,8 @@ async def consume(pool: asyncpg.Pool, r: aioredis.Redis) -> None:
             if not results:
                 continue
 
-            batch:   list[dict] = []
-            msg_ids: list[str]  = []
+            batch: list[dict] = []
+            msg_ids: list[str] = []
 
             for _stream, messages in results:
                 for msg_id, data in messages:
@@ -209,7 +212,7 @@ async def consume(pool: asyncpg.Pool, r: aioredis.Redis) -> None:
 async def main() -> None:
     log.info("ingestion_service_starting")
     pool = await create_db_pool()
-    r    = await create_redis(REDIS_URL)
+    r = await create_redis(REDIS_URL)
     await consume(pool, r)
 
 

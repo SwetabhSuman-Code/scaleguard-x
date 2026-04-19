@@ -45,10 +45,10 @@ PG_DSN = (
     f"/{os.getenv('POSTGRES_DB', 'scaleguard')}"
 )
 
-CPU_THRESH     = float(os.getenv("ANOMALY_CPU_THRESHOLD", 85.0))
+CPU_THRESH = float(os.getenv("ANOMALY_CPU_THRESHOLD", 85.0))
 LATENCY_THRESH = float(os.getenv("ANOMALY_LATENCY_THRESHOLD", 500.0))
-MEM_THRESH     = float(os.getenv("ANOMALY_MEMORY_THRESHOLD", 90.0))
-RUN_INTERVAL   = int(os.getenv("ANOMALY_RUN_INTERVAL", 10))   # seconds
+MEM_THRESH = float(os.getenv("ANOMALY_MEMORY_THRESHOLD", 90.0))
+RUN_INTERVAL = int(os.getenv("ANOMALY_RUN_INTERVAL", 10))  # seconds
 WINDOW_MINUTES = 60
 
 # ── Circuit breaker ───────────────────────────────────────────────
@@ -58,7 +58,7 @@ _pg_cb = make_postgres_breaker("anomaly_engine")
 # ── DB Pool — exponential back-off ───────────────────────────────
 async def create_pool() -> asyncpg.Pool:
     for attempt in range(15):
-        delay = min(2 ** attempt, 30)
+        delay = min(2**attempt, 30)
         try:
             pool = await asyncpg.create_pool(
                 PG_DSN,
@@ -148,34 +148,34 @@ async def rule_based_detection(pool: asyncpg.Pool) -> None:
     now = datetime.now(timezone.utc)
     for row in rows:
         checks = [
-            ("cpu",     row["cpu_usage"],    CPU_THRESH,     "High CPU usage"),
-            ("memory",  row["memory_usage"], MEM_THRESH,     "High Memory usage"),
-            ("latency", row["latency_ms"],   LATENCY_THRESH, "High Latency"),
+            ("cpu", row["cpu_usage"], CPU_THRESH, "High CPU usage"),
+            ("memory", row["memory_usage"], MEM_THRESH, "High Memory usage"),
+            ("latency", row["latency_ms"], LATENCY_THRESH, "High Latency"),
         ]
         for metric, value, threshold, desc in checks:
             if value > threshold:
                 excess_pct = (value - threshold) / threshold
-                score      = min(1.0, 0.5 + excess_pct)
+                score = min(1.0, 0.5 + excess_pct)
                 log.warning(
                     "rule_anomaly_detected",
                     extra={
-                        "node_id":   row["node_id"],
-                        "metric":    metric,
-                        "value":     round(value, 2),
+                        "node_id": row["node_id"],
+                        "metric": metric,
+                        "value": round(value, 2),
                         "threshold": threshold,
-                        "score":     round(score, 3),
+                        "score": round(score, 3),
                     },
                 )
                 await record_anomaly(
                     pool,
-                    node_id       = row["node_id"],
-                    detected_at   = now,
-                    anomaly_type  = "rule_based",
-                    metric_name   = metric,
-                    metric_value  = value,
-                    threshold     = threshold,
-                    anomaly_score = round(score, 3),
-                    description   = f"{desc}: {value:.1f} exceeds threshold {threshold}",
+                    node_id=row["node_id"],
+                    detected_at=now,
+                    anomaly_type="rule_based",
+                    metric_name=metric,
+                    metric_value=value,
+                    threshold=threshold,
+                    anomaly_score=round(score, 3),
+                    description=f"{desc}: {value:.1f} exceeds threshold {threshold}",
                 )
 
 
@@ -213,7 +213,7 @@ async def ml_based_detection(pool: asyncpg.Pool) -> None:
     for r in rows:
         by_node.setdefault(r["node_id"], []).append(r)
 
-    now           = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
     recent_cutoff = now - timedelta(minutes=2)
 
     for node_id, node_rows in by_node.items():
@@ -243,8 +243,8 @@ async def ml_based_detection(pool: asyncpg.Pool) -> None:
             dtype=np.float32,
         )
 
-        scores   = clf.decision_function(recent_feats)   # negative = anomalous
-        raw_pred = clf.predict(recent_feats)              # -1 = outlier
+        scores = clf.decision_function(recent_feats)  # negative = anomalous
+        raw_pred = clf.predict(recent_feats)  # -1 = outlier
 
         for i, row in enumerate(recent_rows):
             if raw_pred[i] == -1:
@@ -252,22 +252,22 @@ async def ml_based_detection(pool: asyncpg.Pool) -> None:
                 log.warning(
                     "ml_anomaly_detected",
                     extra={
-                        "node_id":       node_id,
+                        "node_id": node_id,
                         "anomaly_score": round(anomaly_score, 3),
-                        "cpu":           row["cpu_usage"],
-                        "memory":        row["memory_usage"],
+                        "cpu": row["cpu_usage"],
+                        "memory": row["memory_usage"],
                     },
                 )
                 await record_anomaly(
                     pool,
-                    node_id       = node_id,
-                    detected_at   = now,
-                    anomaly_type  = "ml_based",
-                    metric_name   = "composite",
-                    metric_value  = float(row["cpu_usage"]),
-                    threshold     = None,
-                    anomaly_score = round(anomaly_score, 3),
-                    description   = (
+                    node_id=node_id,
+                    detected_at=now,
+                    anomaly_type="ml_based",
+                    metric_name="composite",
+                    metric_value=float(row["cpu_usage"]),
+                    threshold=None,
+                    anomaly_score=round(anomaly_score, 3),
+                    description=(
                         f"Isolation Forest outlier on {node_id}: "
                         f"cpu={row['cpu_usage']:.1f}% mem={row['memory_usage']:.1f}% "
                         f"lat={row['latency_ms']:.1f}ms rps={row['requests_per_sec']:.1f}"

@@ -194,9 +194,7 @@ def get_metrics() -> MetricsRegistry:
     """Retrieve the global metrics registry."""
     global _metrics
     if _metrics is None:
-        raise RuntimeError(
-            "Metrics not initialized. Call setup_metrics() first."
-        )
+        raise RuntimeError("Metrics not initialized. Call setup_metrics() first.")
     return _metrics
 
 
@@ -225,12 +223,13 @@ def setup_metrics_server(port: int = 9090) -> None:
 async def metrics_timer(metric_histogram, service_name: str | None = None):
     """
     Async context manager to time a block of code and record to a histogram.
-    
+
     Usage:
         async with metrics_timer(metrics.db_query_duration_seconds, "api_gateway"):
             await db.fetch(...)
     """
     import time
+
     start = time.monotonic()
     try:
         yield
@@ -251,7 +250,11 @@ def record_metric(metric, value: float, labels: dict | None = None) -> None:
     """Record a metric value with optional labels."""
     try:
         if labels:
-            metric.labels(**labels).set(value) if hasattr(metric, "set") else metric.labels(**labels).observe(value)
+            (
+                metric.labels(**labels).set(value)
+                if hasattr(metric, "set")
+                else metric.labels(**labels).observe(value)
+            )
         else:
             metric.set(value) if hasattr(metric, "set") else metric.observe(value)
     except Exception as e:

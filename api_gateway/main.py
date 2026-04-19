@@ -54,7 +54,7 @@ PG_DSN = (
 REDIS_URL = f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_PORT', '6379')}"
 
 # ── Circuit breakers ──────────────────────────────────────────────
-_pg_cb    = make_postgres_breaker("api_gateway")
+_pg_cb = make_postgres_breaker("api_gateway")
 _redis_cb = make_redis_breaker("api_gateway")
 _jwt_handler = JWTHandler(
     JWTConfig(
@@ -91,7 +91,7 @@ state = AppState()
 async def lifespan(app: FastAPI):
     """Startup: connect to Postgres + Redis with exponential back-off."""
     for attempt in range(15):
-        delay = min(2 ** attempt, 30)
+        delay = min(2**attempt, 30)
         try:
             state.db_pool = await asyncpg.create_pool(
                 PG_DSN,
@@ -228,8 +228,10 @@ async def _require_db() -> asyncpg.Pool:
 # Pydantic response models
 # ================================================================
 
+
 class MetricPoint(BaseModel):
     """A single metric sample from one node."""
+
     node_id: str
     timestamp: datetime
     cpu_usage: float
@@ -241,6 +243,7 @@ class MetricPoint(BaseModel):
 
 class AnomalyRecord(BaseModel):
     """An anomaly detected by rule-based or ML-based detection."""
+
     id: int
     node_id: str
     detected_at: datetime
@@ -254,6 +257,7 @@ class AnomalyRecord(BaseModel):
 
 class PredictionRecord(BaseModel):
     """A load forecast produced by the prediction engine."""
+
     id: int
     predicted_at: datetime
     horizon_minutes: int
@@ -268,6 +272,7 @@ class PredictionRecord(BaseModel):
 
 class ScalingEvent(BaseModel):
     """A record of an autoscaling decision."""
+
     id: int
     triggered_at: datetime
     action: str
@@ -278,6 +283,7 @@ class ScalingEvent(BaseModel):
 
 class AlertRecord(BaseModel):
     """An alert raised by the anomaly or rule engine."""
+
     id: int
     raised_at: datetime
     severity: str
@@ -289,6 +295,7 @@ class AlertRecord(BaseModel):
 
 class WorkerRecord(BaseModel):
     """A registered worker container in the worker registry."""
+
     worker_id: str
     container_id: Optional[str] = None
     registered_at: datetime
@@ -298,6 +305,7 @@ class WorkerRecord(BaseModel):
 
 class SystemStatus(BaseModel):
     """Aggregated system health snapshot."""
+
     status: str
     active_workers: int
     nodes_reporting: int
@@ -308,6 +316,7 @@ class SystemStatus(BaseModel):
 
 class TokenRequest(BaseModel):
     """Simple development login payload used to mint JWTs."""
+
     username: str
     subject: Optional[str] = None
     role: str = "viewer"
@@ -363,6 +372,7 @@ def _require_permission(request: Request, permission: Permission) -> Dict[str, A
 # Health
 # ================================================================
 
+
 @app.get(
     "/health",
     tags=["System"],
@@ -381,6 +391,7 @@ async def health():
 # ================================================================
 # Auth
 # ================================================================
+
 
 @app.post("/api/auth/token", tags=["Auth"], summary="Issue a development JWT")
 async def create_token(payload: TokenRequest) -> Dict[str, Any]:
@@ -404,6 +415,7 @@ async def create_token(payload: TokenRequest) -> Dict[str, Any]:
 # ================================================================
 # METRICS
 # ================================================================
+
 
 @app.post(
     "/api/metrics",
@@ -465,6 +477,7 @@ async def ingest_metric(payload: MetricIngestRequest, request: Request) -> Dict[
         "trace_id": getattr(request.state, "trace_id", None),
     }
 
+
 @app.get(
     "/api/metrics",
     response_model=List[MetricPoint],
@@ -492,7 +505,9 @@ async def get_metrics(
                            FROM metrics
                            WHERE node_id = $1 AND timestamp >= $2
                            ORDER BY timestamp DESC LIMIT $3""",
-                        node_id, since, limit,
+                        node_id,
+                        since,
+                        limit,
                     )
                 else:
                     rows = await con.fetch(
@@ -501,7 +516,8 @@ async def get_metrics(
                            FROM metrics
                            WHERE timestamp >= $1
                            ORDER BY timestamp DESC LIMIT $2""",
-                        since, limit,
+                        since,
+                        limit,
                     )
     except CircuitBreakerError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
@@ -511,7 +527,7 @@ async def get_metrics(
 @app.get("/api/metrics/nodes", tags=["Metrics"], summary="List active nodes")
 async def get_active_nodes():
     """Return list of node IDs that have reported metrics in the last 5 minutes."""
-    pool  = await _require_db()
+    pool = await _require_db()
     since = datetime.now(timezone.utc) - timedelta(minutes=5)
     try:
         async with _pg_cb:
@@ -527,7 +543,7 @@ async def get_active_nodes():
 @app.get("/api/metrics/summary", tags=["Metrics"], summary="Latest aggregate metrics")
 async def get_metrics_summary():
     """Latest average metrics across all nodes (5-minute window)."""
-    pool  = await _require_db()
+    pool = await _require_db()
     since = datetime.now(timezone.utc) - timedelta(minutes=5)
     try:
         async with _pg_cb:
@@ -552,6 +568,7 @@ async def get_metrics_summary():
 # ANOMALIES
 # ================================================================
 
+
 @app.get(
     "/api/anomalies",
     response_model=List[AnomalyRecord],
@@ -563,7 +580,7 @@ async def get_anomalies(
     limit: int = Query(default=100, le=1000),
 ) -> List[AnomalyRecord]:
     """Return anomalies detected within the specified lookback window."""
-    pool  = await _require_db()
+    pool = await _require_db()
     since = datetime.now(timezone.utc) - timedelta(minutes=minutes)
     try:
         async with _pg_cb:
@@ -573,7 +590,8 @@ async def get_anomalies(
                               metric_value, threshold, anomaly_score, description
                        FROM anomalies WHERE detected_at >= $1
                        ORDER BY detected_at DESC LIMIT $2""",
-                    since, limit,
+                    since,
+                    limit,
                 )
     except CircuitBreakerError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
@@ -583,6 +601,7 @@ async def get_anomalies(
 # ================================================================
 # PREDICTIONS
 # ================================================================
+
 
 @app.get(
     "/api/predictions",
@@ -614,6 +633,7 @@ async def get_predictions(
 # SCALING EVENTS
 # ================================================================
 
+
 @app.get(
     "/api/scaling",
     response_model=List[ScalingEvent],
@@ -642,6 +662,7 @@ async def get_scaling_events(
 # ALERTS
 # ================================================================
 
+
 @app.get(
     "/api/alerts",
     response_model=List[AlertRecord],
@@ -654,7 +675,7 @@ async def get_alerts(
     limit: int = Query(default=100, le=500),
 ) -> List[AlertRecord]:
     """Return alerts, optionally filtering to only unresolved ones."""
-    pool  = await _require_db()
+    pool = await _require_db()
     since = datetime.now(timezone.utc) - timedelta(minutes=minutes)
     try:
         async with _pg_cb:
@@ -664,14 +685,16 @@ async def get_alerts(
                         """SELECT id, raised_at, severity, node_id, alert_type, message, resolved
                            FROM alerts WHERE raised_at >= $1 AND resolved = FALSE
                            ORDER BY raised_at DESC LIMIT $2""",
-                        since, limit,
+                        since,
+                        limit,
                     )
                 else:
                     rows = await con.fetch(
                         """SELECT id, raised_at, severity, node_id, alert_type, message, resolved
                            FROM alerts WHERE raised_at >= $1
                            ORDER BY raised_at DESC LIMIT $2""",
-                        since, limit,
+                        since,
+                        limit,
                     )
     except CircuitBreakerError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
@@ -681,6 +704,7 @@ async def get_alerts(
 # ================================================================
 # WORKERS
 # ================================================================
+
 
 @app.get(
     "/api/workers",
@@ -706,6 +730,7 @@ async def get_workers() -> List[WorkerRecord]:
 # ================================================================
 # SYSTEM OVERVIEW
 # ================================================================
+
 
 @app.get(
     "/api/status",
@@ -760,9 +785,7 @@ async def manual_scale(target: int, request: Request) -> Dict[str, Any]:
     try:
         async with _pg_cb:
             async with pool.acquire() as con:
-                previous = await con.fetchval(
-                    "SELECT COUNT(*) FROM workers WHERE status='active'"
-                )
+                previous = await con.fetchval("SELECT COUNT(*) FROM workers WHERE status='active'")
                 await con.execute(
                     """INSERT INTO scaling_events
                            (triggered_at, action, prev_replicas, new_replicas, reason)

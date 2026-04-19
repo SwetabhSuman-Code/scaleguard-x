@@ -1,6 +1,7 @@
 """
 ScaleGuard X — Unit Tests: Circuit Breaker
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -18,6 +19,7 @@ from lib.circuit_breaker import (
 
 
 # ── Sync circuit breaker tests ────────────────────────────────────
+
 
 class TestCircuitBreakerSync:
     def test_initial_state_is_closed(self) -> None:
@@ -90,12 +92,13 @@ class TestCircuitBreakerSync:
 
     def test_repr(self) -> None:
         cb = CircuitBreaker("my_cb", failure_threshold=5, recovery_timeout=30)
-        r  = repr(cb)
+        r = repr(cb)
         assert "my_cb" in r
         assert "CLOSED" in r
 
 
 # ── Async circuit breaker tests ───────────────────────────────────
+
 
 @pytest.mark.unit
 class TestCircuitBreakerAsync:
@@ -144,6 +147,7 @@ class TestCircuitBreakerAsync:
 
 
 # ── Factory functions ─────────────────────────────────────────────
+
 
 class TestFactoryFunctions:
     def test_postgres_breaker(self) -> None:

@@ -33,7 +33,7 @@ load_dotenv()
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 STREAM_KEY = os.getenv("METRICS_STREAM_KEY", "metrics_stream")
-INTERVAL   = int(os.getenv("AGENT_INTERVAL", 5))
+INTERVAL = int(os.getenv("AGENT_INTERVAL", 5))
 
 # Prefer explicit NODE_ID env; fall back to hostname + short uuid
 NODE_ID = os.getenv("NODE_ID") or f"{socket.gethostname()}-{str(uuid.uuid4())[:8]}"
@@ -47,7 +47,7 @@ log = get_logger("metrics_agent")
 # ── Redis connection — exponential back-off ───────────────────────
 def get_redis_client() -> redis.Redis:
     for attempt in range(20):
-        delay = min(2 ** attempt, 30)
+        delay = min(2**attempt, 30)
         try:
             client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
             client.ping()
@@ -68,23 +68,23 @@ def get_redis_client() -> redis.Redis:
 # ── Metric collection ─────────────────────────────────────────────
 def collect_metrics() -> dict:
     """Gather CPU, memory, disk, and simulate latency/RPS from load average."""
-    cpu  = psutil.cpu_percent(interval=1)
-    mem  = psutil.virtual_memory().percent
+    cpu = psutil.cpu_percent(interval=1)
+    mem = psutil.virtual_memory().percent
     disk = psutil.disk_usage(Path("/")).percent
 
     # On platforms without getloadavg (Windows), fall back to cpu fraction
-    load    = psutil.getloadavg()[0] if hasattr(psutil, "getloadavg") else cpu / 100.0
+    load = psutil.getloadavg()[0] if hasattr(psutil, "getloadavg") else cpu / 100.0
     latency = round(max(5.0, 20 + load * 30 + random.gauss(0, 5)), 2)
-    rps     = round(max(1.0, 50 + load * 80 + random.gauss(0, 10)), 2)
+    rps = round(max(1.0, 50 + load * 80 + random.gauss(0, 10)), 2)
 
     return {
-        "node_id":          NODE_ID,
-        "timestamp":        time.time(),
-        "cpu_usage":        round(cpu, 2),
-        "memory_usage":     round(mem, 2),
-        "latency_ms":       latency,
+        "node_id": NODE_ID,
+        "timestamp": time.time(),
+        "cpu_usage": round(cpu, 2),
+        "memory_usage": round(mem, 2),
+        "latency_ms": latency,
         "requests_per_sec": rps,
-        "disk_usage":       round(disk, 2),
+        "disk_usage": round(disk, 2),
     }
 
 
@@ -103,11 +103,11 @@ def main() -> None:
             log.info(
                 "metrics_published",
                 extra={
-                    "node_id":    NODE_ID,
-                    "cpu":        metrics["cpu_usage"],
-                    "mem":        metrics["memory_usage"],
+                    "node_id": NODE_ID,
+                    "cpu": metrics["cpu_usage"],
+                    "mem": metrics["memory_usage"],
                     "latency_ms": metrics["latency_ms"],
-                    "rps":        metrics["requests_per_sec"],
+                    "rps": metrics["requests_per_sec"],
                 },
             )
         except Exception as exc:
