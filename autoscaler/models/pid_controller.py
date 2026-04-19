@@ -187,7 +187,9 @@ class PIDController:
             "last_error": self.last_error,
             "error_history_length": len(self.error_history),
             "error_mean": statistics.mean(self.error_history),
-            "error_std": statistics.stdev(self.error_history) if len(self.error_history) > 1 else 0,
+            "error_std": (
+                statistics.stdev(self.error_history) if len(self.error_history) > 1 else 0
+            ),
             "error_min": min(self.error_history),
             "error_max": max(self.error_history),
         }

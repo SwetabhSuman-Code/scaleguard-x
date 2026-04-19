@@ -16,7 +16,12 @@ import jwt as pyjwt
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, patch
 
-from api_gateway.auth.jwt_handler import JWTHandler, JWTConfig, TokenClaims, TokenAlgorithm
+from api_gateway.auth.jwt_handler import (
+    JWTHandler,
+    JWTConfig,
+    TokenClaims,
+    TokenAlgorithm,
+)
 from api_gateway.auth.rbac import RBACManager, Role, Permission, AccessControl
 
 

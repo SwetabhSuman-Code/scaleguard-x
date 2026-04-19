@@ -198,7 +198,10 @@ class TestLSTMIntegration:
     def test_lstm_spike_detection_emergency(self):
         """LSTM spike detection triggers emergency scaling."""
         mock_lstm = Mock()
-        mock_lstm.predict_spike_probability.return_value = (0.85, 0.15)  # 85% spike prob
+        mock_lstm.predict_spike_probability.return_value = (
+            0.85,
+            0.15,
+        )  # 85% spike prob
 
         config = PredictiveScalerConfig(lstm_enabled=True, spike_probability_threshold=0.6)
         scaler = PredictiveScaler(config, lstm_module=mock_lstm)

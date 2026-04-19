@@ -24,7 +24,11 @@ from dotenv import load_dotenv
 
 # ── Shared lib ────────────────────────────────────────────────────
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from lib.circuit_breaker import CircuitBreakerError, make_postgres_breaker, make_redis_breaker
+from lib.circuit_breaker import (
+    CircuitBreakerError,
+    make_postgres_breaker,
+    make_redis_breaker,
+)
 from lib.logging_config import get_logger, setup_json_logging
 from lib.prometheus_metrics import setup_metrics, setup_metrics_server
 

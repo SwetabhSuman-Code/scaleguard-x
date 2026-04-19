@@ -33,8 +33,17 @@ from api_gateway.auth.jwt_handler import JWTConfig, JWTHandler
 from api_gateway.auth.rbac import Permission, RBACManager
 from api_gateway.middleware.rate_limiter import RateLimiter
 from api_gateway.tracing.tracer import RequestTracer, Tracer, TracingConfig
-from lib.circuit_breaker import CircuitBreakerError, make_postgres_breaker, make_redis_breaker
-from lib.logging_config import clear_log_context, get_logger, set_log_context, setup_json_logging
+from lib.circuit_breaker import (
+    CircuitBreakerError,
+    make_postgres_breaker,
+    make_redis_breaker,
+)
+from lib.logging_config import (
+    clear_log_context,
+    get_logger,
+    set_log_context,
+    setup_json_logging,
+)
 from lib.prometheus_metrics import setup_metrics, setup_metrics_server
 
 load_dotenv()
@@ -560,7 +569,13 @@ async def get_metrics_summary():
     except CircuitBreakerError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     if not row:
-        return {"avg_cpu": 0, "avg_mem": 0, "avg_latency": 0, "avg_rps": 0, "node_count": 0}
+        return {
+            "avg_cpu": 0,
+            "avg_mem": 0,
+            "avg_latency": 0,
+            "avg_rps": 0,
+            "node_count": 0,
+        }
     return dict(row)
 
 

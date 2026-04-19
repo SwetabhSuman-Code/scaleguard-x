@@ -16,7 +16,11 @@ from datetime import datetime, timedelta, timezone
 
 from api_gateway.auth.jwt_handler import JWTHandler, JWTConfig, TokenClaims
 from api_gateway.auth.rbac import RBACManager, Permission
-from api_gateway.middleware.rate_limiter import RateLimiter, RateLimitConfig, RateLimitStrategy
+from api_gateway.middleware.rate_limiter import (
+    RateLimiter,
+    RateLimitConfig,
+    RateLimitStrategy,
+)
 from api_gateway.tracing.tracer import Tracer, TracingConfig, RequestTracer
 
 

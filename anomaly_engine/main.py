@@ -222,7 +222,12 @@ async def ml_based_detection(pool: asyncpg.Pool) -> None:
 
         features = np.array(
             [
-                [r["cpu_usage"], r["memory_usage"], r["latency_ms"], r["requests_per_sec"]]
+                [
+                    r["cpu_usage"],
+                    r["memory_usage"],
+                    r["latency_ms"],
+                    r["requests_per_sec"],
+                ]
                 for r in node_rows
             ],
             dtype=np.float32,
@@ -237,7 +242,12 @@ async def ml_based_detection(pool: asyncpg.Pool) -> None:
 
         recent_feats = np.array(
             [
-                [r["cpu_usage"], r["memory_usage"], r["latency_ms"], r["requests_per_sec"]]
+                [
+                    r["cpu_usage"],
+                    r["memory_usage"],
+                    r["latency_ms"],
+                    r["requests_per_sec"],
+                ]
                 for r in recent_rows
             ],
             dtype=np.float32,

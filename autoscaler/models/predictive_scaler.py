@@ -245,7 +245,8 @@ class PredictiveScaler:
 
         # Apply final clamping
         final_action = max(
-            self.config.min_scaling_action, min(self.config.max_scaling_action, combined_action)
+            self.config.min_scaling_action,
+            min(self.config.max_scaling_action, combined_action),
         )
 
         # Ignore trivial scaling decisions (thrashing prevention)

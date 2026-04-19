@@ -85,7 +85,10 @@ class MetricsRegistry:
         self.anomalies_detected_total = Counter(
             "scaleguard_anomalies_detected_total",
             "Total anomalies detected",
-            ["anomaly_type", "metric_name"],  # "rule_based"/"ml_based", "cpu"/"memory"/etc
+            [
+                "anomaly_type",
+                "metric_name",
+            ],  # "rule_based"/"ml_based", "cpu"/"memory"/etc
         )
 
         self.anomaly_detection_duration_seconds = Histogram(

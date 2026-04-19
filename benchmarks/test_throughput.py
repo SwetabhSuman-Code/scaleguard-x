@@ -34,7 +34,10 @@ class ThroughputBenchmark:
         self.errors: List[str] = []
 
     async def run_throughput_test(
-        self, target_rps: int = 5_000, duration_seconds: int = 60, concurrent_requests: int = 20
+        self,
+        target_rps: int = 5_000,
+        duration_seconds: int = 60,
+        concurrent_requests: int = 20,
     ) -> Dict:
         """
         Run sustained throughput test

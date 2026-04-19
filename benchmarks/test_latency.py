@@ -107,7 +107,11 @@ class LatencyBenchmark:
         return latencies
 
     async def _measure_concurrent(
-        self, client: httpx.AsyncClient, endpoint: str, samples: int, concurrent_requests: int
+        self,
+        client: httpx.AsyncClient,
+        endpoint: str,
+        samples: int,
+        concurrent_requests: int,
     ) -> List[float]:
         """Measure latency with concurrent requests"""
         import asyncio
@@ -278,7 +282,9 @@ async def test_metrics_post_latency_concurrent(save_benchmark_result, logger):
     benchmark = LatencyBenchmark()
 
     async with httpx.AsyncClient(
-        base_url="http://localhost:8000", timeout=30, limits=httpx.Limits(max_connections=20)
+        base_url="http://localhost:8000",
+        timeout=30,
+        limits=httpx.Limits(max_connections=20),
     ) as client:
         latencies = []
         errors = []

@@ -318,7 +318,12 @@ class TestSpanCreation:
 
     def test_span_initialization(self):
         """Span initializes with metadata."""
-        span = Span(name="test_op", trace_id="trace123", span_id="span456", start_time=time.time())
+        span = Span(
+            name="test_op",
+            trace_id="trace123",
+            span_id="span456",
+            start_time=time.time(),
+        )
 
         assert span.name == "test_op"
         assert span.trace_id == "trace123"
@@ -336,7 +341,12 @@ class TestSpanCreation:
 
     def test_span_attributes(self):
         """Span stores attributes."""
-        span = Span(name="test_op", trace_id="trace123", span_id="span456", start_time=time.time())
+        span = Span(
+            name="test_op",
+            trace_id="trace123",
+            span_id="span456",
+            start_time=time.time(),
+        )
 
         span.set_attribute("user_id", "user123")
         span.set_attribute("status", "success")
@@ -346,7 +356,12 @@ class TestSpanCreation:
 
     def test_span_events(self):
         """Span records events."""
-        span = Span(name="test_op", trace_id="trace123", span_id="span456", start_time=time.time())
+        span = Span(
+            name="test_op",
+            trace_id="trace123",
+            span_id="span456",
+            start_time=time.time(),
+        )
 
         span.add_event("checkpoint_1", {"progress": 50})
         span.add_event("checkpoint_2", {"progress": 100})

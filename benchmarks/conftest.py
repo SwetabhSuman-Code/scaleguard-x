@@ -48,7 +48,8 @@ def benchmark_results_dir():
 def logger():
     """Configured logger for benchmark tests"""
     logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
     return logging.getLogger("benchmarks")
 
