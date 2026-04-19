@@ -1,0 +1,75 @@
+# Docker ignore file - excludes unnecessary files from Docker build context
+# This reduces context size and speeds up builds
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+README*
+CONTRIBUTING.md
+
+# Development
+.vscode/
+.idea/
+*.pyc
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.coverage
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Benchmarks and reports
+benchmarks/results/
+benchmarks/reports/
+*.json
+*.html
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.circleci/
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Docker and compose
+docker-compose.yml
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+docker-ignore
+
+# Terraform and Infrastructure (cached)
+infrastructure/terraform/.terraform/
+infrastructure/terraform/*.tfstate*
+infrastructure/terraform/.tfplan
+
+# Node modules (for dashboard)
+node_modules/
+dashboard/dist/
+
+# Python packaging
+dist/
+build/
+*.egg
+
+# Test artifacts
+tests/results/
+tests/reports/
+coverage/
+
+# Logs
+logs/
+*.log
