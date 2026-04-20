@@ -132,7 +132,7 @@ async def lifespan(app: FastAPI):
     if state.db_pool:
         await state.db_pool.close()
     if state.redis:
-        await state.redis.aclose()
+        await state.redis.close()
     log.info("api_gateway_shutdown")
 
 
