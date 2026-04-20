@@ -21,6 +21,7 @@ What it does not include yet is hard proof that every production claim has been 
 - Predictive autoscaler that reads stored forecasts and can scale by more than one worker at a time
 - Structured logging, circuit breakers, Prometheus metrics, and request tracing support
 - Grafana dashboards, Prometheus config, docker-compose stack, and ECS Terraform scaffolding
+- Next.js App Router dashboard in `dashboard-next/` for metrics, anomalies, alerts, predictions, scaling, and workers
 - Unit and integration coverage for auth, middleware, tracing, PID control, predictive scaling, and prediction helpers
 
 ## Measured results
@@ -77,6 +78,23 @@ Week-2 evidence bundle:
 
 See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for details and rerun instructions.
 
+## Next.js monitoring dashboard
+
+ScaleGuard X now includes a Next.js App Router dashboard in `dashboard-next/` that consumes the existing FastAPI APIs instead of replacing the backend services. It visualizes system status, live metrics, alerts, predictions, autoscaling activity, and worker/node health.
+
+The dashboard currently shows:
+
+- Overview KPIs from `/health`, `/api/status`, `/api/metrics/summary`, `/api/alerts`, `/api/scaling`, and `/api/predictions`
+- Metrics filtering by node and time window with charts for RPS, latency, CPU, memory, and disk usage
+- Autoscaling decision history, including replica transitions and autoscaler reasons
+- Worker and node health views backed by `/api/workers` and `/api/metrics/nodes`
+
+![ScaleGuard X overview dashboard](docs/images/dashboard_next_overview.png)
+
+![ScaleGuard X metrics explorer](docs/images/dashboard_next_metrics.png)
+
+![ScaleGuard X scaling decision log](docs/images/dashboard_next_scaling.png)
+
 ## Architecture
 
 ```mermaid
@@ -104,8 +122,14 @@ graph TD
 3. Start the stack with `docker compose up -d --build`.
 4. Wait for the API to come up with `./scripts/wait-for-health.sh`.
 5. Validate the ingestion pipeline with `python scripts/validate_ingestion.py`.
-6. Open:
-   - Dashboard: `http://localhost:3000`
+6. Optional Next.js dashboard:
+   - `cd dashboard-next`
+   - `npm install`
+   - `npm run dev`
+   - Set `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000` in `dashboard-next/.env.local` if your API runs elsewhere.
+7. Open:
+   - Next.js dashboard: `http://localhost:3000`
+   - Legacy dashboard: `http://localhost:5173` if you run the Vite app in `dashboard/`
    - API docs: `http://localhost:8000/docs`
    - Prometheus: `http://localhost:9090`
    - Grafana: `http://localhost:3001`

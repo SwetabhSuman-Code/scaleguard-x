@@ -59,6 +59,9 @@ dashboard/node_modules/
 dashboard/.next/
 dashboard/dist/
 dashboard/build/
+dashboard-next/node_modules/
+dashboard-next/.next/
+dashboard-next/out/
 
 # ── Requirements lock files (keep .txt but skip compiled lock) ────
 requirements.lock
