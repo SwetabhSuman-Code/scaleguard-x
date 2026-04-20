@@ -136,7 +136,7 @@ def ema_predict(series: list[float], steps: int) -> tuple[float, float]:
     for val in series[1:]:
         ema = alpha * val + (1 - alpha) * ema
     trend = (ema - np.mean(series[: len(series) // 2])) / max(1, len(series) // 2)
-    predicted = max(0.0, ema + trend * steps)
+    predicted = float(max(0.0, ema + trend * steps))
     return round(predicted, 2), 0.6
 
 
