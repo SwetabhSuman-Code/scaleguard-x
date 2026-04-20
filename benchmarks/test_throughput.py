@@ -225,13 +225,13 @@ async def test_throughput_1k_metrics_per_sec(save_benchmark_result, logger):
         results["error_rate"] * 100,
     )
 
-    assert results["achieved_rps"] > 900, (
-        f"Only achieved {results['achieved_rps']}/sec (target 1000)"
-    )
+    assert (
+        results["achieved_rps"] > 900
+    ), f"Only achieved {results['achieved_rps']}/sec (target 1000)"
     assert results["error_rate"] < 0.05, f"Error rate too high: {results['error_rate']:.2%}"
-    assert results["p99_latency_ms"] < 500, (
-        f"P99 latency too high: {results['p99_latency_ms']:.0f}ms"
-    )
+    assert (
+        results["p99_latency_ms"] < 500
+    ), f"P99 latency too high: {results['p99_latency_ms']:.0f}ms"
 
 
 @pytest.mark.benchmark
@@ -246,9 +246,9 @@ async def test_throughput_5k_metrics_per_sec(save_benchmark_result, logger):
     )
     save_benchmark_result("throughput_5k_metrics_per_sec", results)
 
-    assert results["achieved_rps"] > 4500, (
-        f"Only achieved {results['achieved_rps']}/sec (target 5000)"
-    )
+    assert (
+        results["achieved_rps"] > 4500
+    ), f"Only achieved {results['achieved_rps']}/sec (target 5000)"
     assert results["error_rate"] < 0.05
     assert results["p99_latency_ms"] < 700
 
@@ -265,9 +265,9 @@ async def test_throughput_10k_metrics_per_sec(save_benchmark_result, logger):
     )
     save_benchmark_result("throughput_10k_metrics_per_sec", results)
 
-    assert results["achieved_rps"] > 9000, (
-        f"Only achieved {results['achieved_rps']}/sec (target 10000)"
-    )
+    assert (
+        results["achieved_rps"] > 9000
+    ), f"Only achieved {results['achieved_rps']}/sec (target 10000)"
     assert results["error_rate"] < 0.05
     assert results["p99_latency_ms"] < 1000
 

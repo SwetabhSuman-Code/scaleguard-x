@@ -82,7 +82,10 @@ def _line_chart_svg(title: str, rows: list[dict[str, str]], value_key: str, outp
         y = top + plot_height - (value / max_y) * plot_height
         return x, y
 
-    rps_points = " ".join(f"{x:.1f},{y:.1f}" for x, y in [point(i, value, max_value) for i, value in enumerate(values)])
+    rps_points = " ".join(
+        f"{x:.1f},{y:.1f}"
+        for x, y in [point(i, value, max_value) for i, value in enumerate(values)]
+    )
     user_points = " ".join(
         f"{x:.1f},{y:.1f}" for x, y in [point(i, value, max_users) for i, value in enumerate(users)]
     )

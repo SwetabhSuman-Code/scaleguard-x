@@ -38,7 +38,9 @@ def _run_command(args: list[str]) -> str:
 
 
 def _test_window(history_rows: list[dict[str, str]]) -> tuple[datetime | None, datetime | None]:
-    aggregated_rows = [row for row in history_rows if row["Name"] == "Aggregated" and row["Timestamp"]]
+    aggregated_rows = [
+        row for row in history_rows if row["Name"] == "Aggregated" and row["Timestamp"]
+    ]
     if not aggregated_rows:
         return None, None
 
