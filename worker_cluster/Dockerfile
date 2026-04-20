@@ -12,4 +12,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY lib/ ./lib/
 COPY worker_cluster/ ./worker_cluster/
 
-CMD ["python", "worker.py"]
+CMD ["python", "worker_cluster/worker.py"]

@@ -219,7 +219,13 @@ async def security_and_observability_middleware(request: Request, call_next):
             },
         )
 
-    response: Response = await call_next(request)
+    try:
+        response: Response = await call_next(request)
+    except RuntimeError as exc:
+        if str(exc) != "No response returned.":
+            _tracer.end_trace()
+            raise
+        response = Response(status_code=499)
     response.headers["X-Trace-ID"] = request.state.trace_id
     _request_tracer.add_response_span(response.status_code, 0.0)
     _tracer.end_trace()
@@ -231,6 +237,18 @@ async def _require_db() -> asyncpg.Pool:
     if state.db_pool is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
     return state.db_pool
+
+
+def _metric_to_stream_entry(metric: "MetricIngestRequest", timestamp: datetime) -> Dict[str, str]:
+    return {
+        "node_id": metric.node_id,
+        "timestamp": str(timestamp.timestamp()),
+        "cpu_usage": str(metric.cpu_usage),
+        "memory_usage": str(metric.memory_usage),
+        "latency_ms": str(metric.latency_ms),
+        "requests_per_sec": str(metric.requests_per_sec),
+        "disk_usage": str(metric.disk_usage),
+    }
 
 
 # ================================================================
@@ -349,6 +367,12 @@ class MetricIngestRequest(BaseModel):
     timestamp: Optional[datetime] = None
 
 
+class MetricBatchIngestRequest(BaseModel):
+    """Batch of metric samples accepted by the bulk ingestion endpoint."""
+
+    metrics: List[MetricIngestRequest] = Field(min_length=1, max_length=1000)
+
+
 def _serialize_user_for_state(user: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "sub": user.get("sub", "anonymous"),
@@ -375,6 +399,66 @@ def _require_permission(request: Request, permission: Permission) -> Dict[str, A
             detail=f"Missing permission: {permission.value}",
         )
     return user
+
+
+async def _enqueue_metrics(metrics: List[MetricIngestRequest]) -> Optional[List[str]]:
+    if state.redis is None:
+        return None
+
+    stream_key = os.getenv("METRICS_STREAM_KEY", "metrics_stream")
+    stream_entries = [
+        _metric_to_stream_entry(metric, metric.timestamp or datetime.now(timezone.utc))
+        for metric in metrics
+    ]
+
+    try:
+        async with _redis_cb:
+            if len(stream_entries) == 1:
+                message_id = await state.redis.xadd(stream_key, stream_entries[0])
+                return [message_id]
+
+            async with state.redis.pipeline(transaction=False) as pipe:
+                for entry in stream_entries:
+                    pipe.xadd(stream_key, entry)
+                message_ids = await pipe.execute()
+            return [str(message_id) for message_id in message_ids]
+    except CircuitBreakerError:
+        log.warning("metrics_enqueue_circuit_open")
+    except Exception as exc:
+        log.warning(
+            "metrics_enqueue_failed",
+            extra={"error": str(exc), "count": len(stream_entries)},
+        )
+    return None
+
+
+async def _store_metrics(metrics: List[MetricIngestRequest]) -> None:
+    pool = await _require_db()
+    rows = [
+        (
+            metric.node_id,
+            metric.timestamp or datetime.now(timezone.utc),
+            metric.cpu_usage,
+            metric.memory_usage,
+            metric.latency_ms,
+            metric.requests_per_sec,
+            metric.disk_usage,
+        )
+        for metric in metrics
+    ]
+
+    try:
+        async with _pg_cb:
+            async with pool.acquire() as con:
+                await con.executemany(
+                    """INSERT INTO metrics
+                       (node_id, timestamp, cpu_usage, memory_usage, latency_ms,
+                        requests_per_sec, disk_usage)
+                       VALUES ($1, $2, $3, $4, $5, $6, $7)""",
+                    rows,
+                )
+    except CircuitBreakerError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
 
 
 # ================================================================
@@ -433,56 +517,47 @@ async def create_token(payload: TokenRequest) -> Dict[str, Any]:
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def ingest_metric(payload: MetricIngestRequest, request: Request) -> Dict[str, Any]:
-    timestamp = payload.timestamp or datetime.now(timezone.utc)
-    stream_entry = {
-        "node_id": payload.node_id,
-        "timestamp": str(timestamp.timestamp()),
-        "cpu_usage": str(payload.cpu_usage),
-        "memory_usage": str(payload.memory_usage),
-        "latency_ms": str(payload.latency_ms),
-        "requests_per_sec": str(payload.requests_per_sec),
-        "disk_usage": str(payload.disk_usage),
-    }
+    message_ids = await _enqueue_metrics([payload])
+    if message_ids:
+        return {
+            "status": "queued",
+            "message_id": message_ids[0],
+            "trace_id": getattr(request.state, "trace_id", None),
+        }
 
-    if state.redis is not None:
-        try:
-            async with _redis_cb:
-                message_id = await state.redis.xadd(
-                    os.getenv("METRICS_STREAM_KEY", "metrics_stream"),
-                    stream_entry,
-                )
-            return {
-                "status": "queued",
-                "message_id": message_id,
-                "trace_id": getattr(request.state, "trace_id", None),
-            }
-        except CircuitBreakerError:
-            log.warning("metrics_enqueue_circuit_open")
-        except Exception as exc:
-            log.warning("metrics_enqueue_failed", extra={"error": str(exc)})
-
-    pool = await _require_db()
-    try:
-        async with _pg_cb:
-            async with pool.acquire() as con:
-                await con.execute(
-                    """INSERT INTO metrics
-                       (node_id, timestamp, cpu_usage, memory_usage, latency_ms,
-                        requests_per_sec, disk_usage)
-                       VALUES ($1, $2, $3, $4, $5, $6, $7)""",
-                    payload.node_id,
-                    timestamp,
-                    payload.cpu_usage,
-                    payload.memory_usage,
-                    payload.latency_ms,
-                    payload.requests_per_sec,
-                    payload.disk_usage,
-                )
-    except CircuitBreakerError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+    await _store_metrics([payload])
 
     return {
         "status": "stored",
+        "trace_id": getattr(request.state, "trace_id", None),
+    }
+
+
+@app.post(
+    "/api/metrics/bulk",
+    tags=["Metrics"],
+    summary="Ingest a batch of metric samples",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def ingest_metrics_bulk(
+    payload: MetricBatchIngestRequest,
+    request: Request,
+) -> Dict[str, Any]:
+    message_ids = await _enqueue_metrics(payload.metrics)
+    if message_ids:
+        return {
+            "status": "queued",
+            "count": len(payload.metrics),
+            "message_count": len(message_ids),
+            "first_message_id": message_ids[0],
+            "last_message_id": message_ids[-1],
+            "trace_id": getattr(request.state, "trace_id", None),
+        }
+
+    await _store_metrics(payload.metrics)
+    return {
+        "status": "stored",
+        "count": len(payload.metrics),
         "trace_id": getattr(request.state, "trace_id", None),
     }
 

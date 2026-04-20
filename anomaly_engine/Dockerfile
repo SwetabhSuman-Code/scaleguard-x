@@ -12,4 +12,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY lib/ ./lib/
 COPY anomaly_engine/ ./anomaly_engine/
 
-CMD ["python", "main.py"]
+CMD ["python", "anomaly_engine/main.py"]

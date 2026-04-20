@@ -1,0 +1,7 @@
+triggered_at,action,prev_replicas,new_replicas,reason
+2026-04-19 18:19:47.437433+00,scale_up,2,5,"PID: -3.00, Prophet: +0.00, LSTM: +0.00; cpu=77.6; predicted_rps=0.0; upper_util=0.0; spike_probability=0.00; model=none"
+2026-04-19 18:20:07.962888+00,scale_up,5,8,"PID: -3.00, Prophet: +0.00, LSTM: +0.00; cpu=77.8; predicted_rps=0.0; upper_util=0.0; spike_probability=0.00; model=none"
+2026-04-19 18:32:07.651705+00,scale_down,8,5,"PID: +3.00, Prophet: +0.00, LSTM: +0.00; cpu=43.1; predicted_rps=0.0; upper_util=0.0; spike_probability=0.00; model=none"
+2026-04-19 18:32:54.763001+00,scale_down,5,2,"PID: +3.00, Prophet: +0.00, LSTM: +0.00; cpu=43.0; predicted_rps=0.0; upper_util=0.0; spike_probability=0.00; model=none"
+2026-04-19 18:36:33.711703+00,scale_up,2,5,"PID: -3.00, Prophet: +0.00, LSTM: +0.00; cpu=76.9; predicted_rps=0.0; upper_util=0.0; spike_probability=0.00; model=none"
+2026-04-19 18:36:54.68571+00,scale_up,5,8,"PID: -3.00, Prophet: +0.00, LSTM: +0.00; cpu=77.6; predicted_rps=0.0; upper_util=0.0; spike_probability=0.00; model=none"

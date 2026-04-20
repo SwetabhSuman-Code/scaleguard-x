@@ -26,9 +26,11 @@ locals {
     { name = "POSTGRES_HOST", value = aws_db_instance.scaleguard.address },
     { name = "POSTGRES_PORT", value = tostring(aws_db_instance.scaleguard.port) },
     { name = "POSTGRES_USER", value = aws_db_instance.scaleguard.username },
+    { name = "POSTGRES_PASSWORD", value = var.db_password },
     { name = "POSTGRES_DB", value = aws_db_instance.scaleguard.db_name },
     { name = "REDIS_HOST", value = aws_elasticache_cluster.redis.cache_nodes[0].address },
     { name = "REDIS_PORT", value = tostring(aws_elasticache_cluster.redis.port) },
+    { name = "METRICS_STREAM_KEY", value = "metrics_stream" },
     { name = "JWT_SECRET_KEY", value = var.jwt_secret_key },
     { name = "JWT_ISSUER", value = "scaleguard-api" },
     { name = "JWT_AUDIENCE", value = "scaleguard-services" },
@@ -190,6 +192,42 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+resource "aws_iam_role" "autoscaler_task" {
+  name = "${local.name_prefix}-autoscaler-task"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "ecs-tasks.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy" "autoscaler_ecs_scale" {
+  name = "${local.name_prefix}-autoscaler-ecs-scale"
+  role = aws_iam_role.autoscaler_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ecs:DescribeServices",
+          "ecs:UpdateService"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 resource "aws_db_subnet_group" "scaleguard" {
   name       = "${local.name_prefix}-db"
   subnet_ids = var.private_subnet_ids
@@ -331,6 +369,37 @@ resource "aws_ecs_task_definition" "prediction" {
   tags = local.common_tags
 }
 
+resource "aws_ecs_task_definition" "worker" {
+  family                   = "${local.name_prefix}-worker"
+  cpu                      = 256
+  memory                   = 512
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  execution_role_arn       = aws_iam_role.ecs_task_execution.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "worker-cluster"
+      image     = var.worker_image
+      essential = true
+      environment = concat(local.common_env, [
+        { name = "AGENT_INTERVAL", value = "5" },
+        { name = "NODE_ID", value = "worker-ecs" },
+      ])
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.scaleguard.name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "worker"
+        }
+      }
+    }
+  ])
+
+  tags = local.common_tags
+}
+
 resource "aws_ecs_task_definition" "autoscaler" {
   family                   = "${local.name_prefix}-autoscaler"
   cpu                      = 512
@@ -338,6 +407,7 @@ resource "aws_ecs_task_definition" "autoscaler" {
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   execution_role_arn       = aws_iam_role.ecs_task_execution.arn
+  task_role_arn            = aws_iam_role.autoscaler_task.arn
 
   container_definitions = jsonencode([
     {
@@ -345,6 +415,10 @@ resource "aws_ecs_task_definition" "autoscaler" {
       image     = var.autoscaler_image
       essential = true
       environment = concat(local.common_env, [
+        { name = "AWS_REGION", value = var.aws_region },
+        { name = "AUTOSCALER_BACKEND", value = "ecs" },
+        { name = "ECS_CLUSTER_NAME", value = aws_ecs_cluster.scaleguard.name },
+        { name = "ECS_WORKER_SERVICE_NAME", value = aws_ecs_service.worker.name },
         { name = "AUTOSCALER_RPS_PER_WORKER", value = "300" },
         { name = "AUTOSCALER_MIN_WORKERS", value = "2" },
         { name = "AUTOSCALER_MAX_WORKERS", value = "8" },
@@ -410,6 +484,22 @@ resource "aws_ecs_service" "prediction" {
   cluster         = aws_ecs_cluster.scaleguard.id
   task_definition = aws_ecs_task_definition.prediction.arn
   desired_count   = 1
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    assign_public_ip = false
+    security_groups  = [aws_security_group.ecs_tasks.id]
+    subnets          = var.private_subnet_ids
+  }
+
+  tags = local.common_tags
+}
+
+resource "aws_ecs_service" "worker" {
+  name            = "${local.name_prefix}-worker"
+  cluster         = aws_ecs_cluster.scaleguard.id
+  task_definition = aws_ecs_task_definition.worker.arn
+  desired_count   = 2
   launch_type     = "FARGATE"
 
   network_configuration {

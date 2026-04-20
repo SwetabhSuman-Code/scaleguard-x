@@ -137,8 +137,8 @@ services:
   # ── 7. Anomaly Detection Engine ────────────────────────────────
   anomaly_engine:
     build:
-      context: ./anomaly_engine
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: anomaly_engine/Dockerfile
     container_name: scaleguard-anomaly
     restart: unless-stopped
     environment:
@@ -176,7 +176,7 @@ services:
     restart: unless-stopped
     environment:
       <<: *common-env
-      AUTOSCALER_MIN_WORKERS:          "${AUTOSCALER_MIN_WORKERS:-1}"
+      AUTOSCALER_MIN_WORKERS:          "${AUTOSCALER_MIN_WORKERS:-2}"
       AUTOSCALER_MAX_WORKERS:          "${AUTOSCALER_MAX_WORKERS:-8}"
       AUTOSCALER_SCALE_UP_THRESHOLD:   "${AUTOSCALER_SCALE_UP_THRESHOLD:-0.75}"
       AUTOSCALER_SCALE_DOWN_THRESHOLD: "${AUTOSCALER_SCALE_DOWN_THRESHOLD:-0.35}"

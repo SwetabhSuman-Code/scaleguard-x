@@ -10,9 +10,9 @@ COPY autoscaler/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY lib/ ./lib/
-COPY autoscaler/ .
+COPY autoscaler/ ./autoscaler/
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
   CMD python -c "import os; os.getpid()"
 
-CMD ["python", "main.py"]
+CMD ["python", "autoscaler/main.py"]

@@ -1,0 +1,6 @@
+# Optional full ML dependencies for Prophet forecasting and LSTM spike detection.
+# The default container image intentionally omits these heavy packages so the
+# deployment-prep image can build reliably and use ARIMA/EMA fallbacks.
+
+prophet==1.1.5
+torch==2.1.0

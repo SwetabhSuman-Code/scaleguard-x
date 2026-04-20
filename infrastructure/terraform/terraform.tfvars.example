@@ -1,0 +1,20 @@
+# Copy to terraform.tfvars and replace every placeholder before running terraform plan/apply.
+
+aws_region  = "us-east-1"
+project_name = "scaleguard"
+environment = "prod"
+
+vpc_id             = "vpc-xxxxxxxxxxxxxxxxx"
+public_subnet_ids  = ["subnet-public-a", "subnet-public-b"]
+private_subnet_ids = ["subnet-private-a", "subnet-private-b"]
+
+certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/replace-me"
+
+api_gateway_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/scaleguard-api:latest"
+ingestion_image   = "123456789012.dkr.ecr.us-east-1.amazonaws.com/scaleguard-ingestion:latest"
+prediction_image  = "123456789012.dkr.ecr.us-east-1.amazonaws.com/scaleguard-prediction:latest"
+worker_image      = "123456789012.dkr.ecr.us-east-1.amazonaws.com/scaleguard-worker:latest"
+autoscaler_image  = "123456789012.dkr.ecr.us-east-1.amazonaws.com/scaleguard-autoscaler:latest"
+
+db_password    = "CHANGE_ME_strong_database_password"
+jwt_secret_key = "CHANGE_ME_random_32_plus_character_secret"

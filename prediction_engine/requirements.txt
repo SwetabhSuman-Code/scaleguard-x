@@ -6,8 +6,3 @@ statsmodels==0.14.2
 scipy==1.13.0
 httpx==0.27.0
 prometheus-client==0.20.0
-
-# Phase 2: ML improvements
-prophet==1.1.5
-torch==2.1.0
-pystan==2.19.1.1

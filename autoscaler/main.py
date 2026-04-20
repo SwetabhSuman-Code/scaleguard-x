@@ -20,7 +20,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import asyncpg
 import docker
@@ -55,6 +55,9 @@ MIN_WORKERS = int(os.getenv("AUTOSCALER_MIN_WORKERS", 1))
 MAX_WORKERS = int(os.getenv("AUTOSCALER_MAX_WORKERS", 8))
 RUN_INTERVAL = int(os.getenv("AUTOSCALER_RUN_INTERVAL", 15))
 RPS_PER_WORKER = float(os.getenv("AUTOSCALER_RPS_PER_WORKER", "300"))
+AUTOSCALER_BACKEND = os.getenv("AUTOSCALER_BACKEND", "docker").lower()
+ECS_CLUSTER_NAME = os.getenv("ECS_CLUSTER_NAME", "")
+ECS_WORKER_SERVICE_NAME = os.getenv("ECS_WORKER_SERVICE_NAME", "")
 
 _pg_cb = make_postgres_breaker("autoscaler")
 _docker_cb = make_docker_breaker("autoscaler")
@@ -98,6 +101,9 @@ _predictive_scaler = PredictiveScaler(
 
 def get_docker_client() -> Optional[docker.DockerClient]:
     """Return a Docker client appropriate for the current platform."""
+    if AUTOSCALER_BACKEND == "ecs":
+        return None
+
     system = platform.system()
     try:
         if system == "Windows":
@@ -113,6 +119,39 @@ def get_docker_client() -> Optional[docker.DockerClient]:
             "docker_socket_unavailable",
             extra={"platform": system, "error": str(exc)},
         )
+        log.warning("running_in_dry_run_mode")
+        return None
+
+
+def get_ecs_client() -> Optional[Any]:
+    """Return an ECS client when the autoscaler is running in AWS mode."""
+    if AUTOSCALER_BACKEND != "ecs":
+        return None
+    if not ECS_CLUSTER_NAME or not ECS_WORKER_SERVICE_NAME:
+        log.warning(
+            "ecs_backend_not_configured",
+            extra={
+                "cluster_configured": bool(ECS_CLUSTER_NAME),
+                "worker_service_configured": bool(ECS_WORKER_SERVICE_NAME),
+            },
+        )
+        return None
+
+    try:
+        import boto3
+
+        client = boto3.client(
+            "ecs",
+            region_name=os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION"),
+        )
+        client.describe_services(cluster=ECS_CLUSTER_NAME, services=[ECS_WORKER_SERVICE_NAME])
+        log.info(
+            "ecs_client_connected",
+            extra={"cluster": ECS_CLUSTER_NAME, "service": ECS_WORKER_SERVICE_NAME},
+        )
+        return client
+    except Exception as exc:
+        log.warning("ecs_client_unavailable", extra={"error": str(exc)})
         log.warning("running_in_dry_run_mode")
         return None
 
@@ -188,6 +227,42 @@ def get_worker_containers(docker_client: docker.DockerClient) -> list:
     except Exception as exc:
         log.warning("docker_list_failed", extra={"error": str(exc)})
         return []
+
+
+def get_ecs_worker_count(ecs_client: Any) -> int:
+    try:
+        response = ecs_client.describe_services(
+            cluster=ECS_CLUSTER_NAME,
+            services=[ECS_WORKER_SERVICE_NAME],
+        )
+        services = response.get("services", [])
+        if not services:
+            return MIN_WORKERS
+        return int(services[0].get("desiredCount", MIN_WORKERS))
+    except Exception as exc:
+        log.warning("ecs_describe_service_failed", extra={"error": str(exc)})
+        return MIN_WORKERS
+
+
+def update_ecs_worker_count(ecs_client: Any, target_count: int) -> bool:
+    try:
+        ecs_client.update_service(
+            cluster=ECS_CLUSTER_NAME,
+            service=ECS_WORKER_SERVICE_NAME,
+            desiredCount=target_count,
+        )
+        log.info(
+            "ecs_worker_service_updated",
+            extra={
+                "cluster": ECS_CLUSTER_NAME,
+                "service": ECS_WORKER_SERVICE_NAME,
+                "desired_count": target_count,
+            },
+        )
+        return True
+    except Exception as exc:
+        log.error("ecs_update_service_failed", extra={"error": str(exc)})
+        return False
 
 
 def spawn_worker(
@@ -302,11 +377,14 @@ def scale_delta_to_target(current_count: int, action: float) -> int:
 async def autoscale_cycle(
     pool: asyncpg.Pool,
     docker_client: Optional[docker.DockerClient],
+    ecs_client: Optional[Any],
 ) -> None:
     avg_cpu = await get_average_cpu(pool)
     prediction = await get_latest_prediction(pool)
 
-    if docker_client is not None:
+    if ecs_client is not None:
+        current_count = get_ecs_worker_count(ecs_client)
+    elif docker_client is not None:
         containers = get_worker_containers(docker_client)
         current_count = len(containers) if containers else MIN_WORKERS
     else:
@@ -329,11 +407,6 @@ async def autoscale_cycle(
     )
 
     target_count = scale_delta_to_target(current_count, decision.action)
-    action_name = "no_change"
-    if target_count > current_count:
-        action_name = "scale_up"
-    elif target_count < current_count:
-        action_name = "scale_down"
 
     reason = (
         f"{decision.reason}; cpu={avg_cpu:.1f}; "
@@ -357,7 +430,12 @@ async def autoscale_cycle(
         },
     )
 
-    if docker_client is not None:
+    previous_count = current_count
+
+    if ecs_client is not None:
+        if current_count != target_count and update_ecs_worker_count(ecs_client, target_count):
+            current_count = target_count
+    elif docker_client is not None:
         env_vars = {
             "REDIS_HOST": os.getenv("REDIS_HOST", "redis_queue"),
             "REDIS_PORT": os.getenv("REDIS_PORT", "6379"),
@@ -366,16 +444,26 @@ async def autoscale_cycle(
             "LOG_LEVEL": os.getenv("LOG_LEVEL", "INFO"),
         }
         while current_count < target_count:
-            current_count += 1
-            spawn_worker(docker_client, current_count, env_vars)
+            next_index = current_count + 1
+            if spawn_worker(docker_client, next_index, env_vars):
+                current_count = next_index
+            else:
+                break
         while current_count > target_count:
             if terminate_worker(docker_client):
                 current_count -= 1
             else:
                 break
 
-    await record_scaling_event(pool, action_name, current_count, target_count, reason)
-    await sync_worker_registry(pool, docker_client)
+    action_name = "no_change"
+    if current_count > previous_count:
+        action_name = "scale_up"
+    elif current_count < previous_count:
+        action_name = "scale_down"
+
+    await record_scaling_event(pool, action_name, previous_count, current_count, reason)
+    if docker_client is not None:
+        await sync_worker_registry(pool, docker_client)
 
 
 async def main() -> None:
@@ -385,16 +473,18 @@ async def main() -> None:
             "interval_s": RUN_INTERVAL,
             "min_workers": MIN_WORKERS,
             "max_workers": MAX_WORKERS,
+            "backend": AUTOSCALER_BACKEND,
         },
     )
     pool = await create_pool()
     docker_client = get_docker_client()
-    if docker_client is None:
+    ecs_client = get_ecs_client()
+    if docker_client is None and ecs_client is None:
         log.warning("dry_run_mode_active")
 
     while True:
         try:
-            await autoscale_cycle(pool, docker_client)
+            await autoscale_cycle(pool, docker_client, ecs_client)
         except Exception as exc:
             log.error("autoscale_cycle_error", extra={"error": str(exc)}, exc_info=True)
         await asyncio.sleep(RUN_INTERVAL)

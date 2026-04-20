@@ -13,6 +13,11 @@ output "ecs_cluster_name" {
   value       = aws_ecs_cluster.scaleguard.name
 }
 
+output "worker_service_name" {
+  description = "ECS service scaled by the ScaleGuard autoscaler."
+  value       = aws_ecs_service.worker.name
+}
+
 output "rds_endpoint" {
   description = "Postgres endpoint used by the pilot deployment."
   value       = aws_db_instance.scaleguard.address

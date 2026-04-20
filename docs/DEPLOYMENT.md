@@ -32,12 +32,39 @@ The repository now includes an AWS-oriented Terraform scaffold under [infrastruc
 - RDS PostgreSQL
 - ElastiCache Redis
 - CloudWatch log groups
+- API, ingestion, prediction, worker, and autoscaler ECS services
+- an ECS-capable autoscaler path that updates the worker service desired count
 - security groups and subnet-group wiring
 
 Required Terraform inputs live in:
 
 - [infrastructure/terraform/variables.tf](/C:/Users/KIIT0001/Desktop/scaleguard-x/infrastructure/terraform/variables.tf)
 - [infrastructure/terraform/outputs.tf](/C:/Users/KIIT0001/Desktop/scaleguard-x/infrastructure/terraform/outputs.tf)
+- [infrastructure/terraform/terraform.tfvars.example](/C:/Users/KIIT0001/Desktop/scaleguard-x/infrastructure/terraform/terraform.tfvars.example)
+
+## Image build and push
+
+Build the deployment image set locally:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build_week2_images.ps1
+```
+
+After installing and configuring AWS CLI, tag and push to ECR:
+
+```powershell
+$accountId = aws sts get-caller-identity --query Account --output text
+$region = "us-east-1"
+$registry = "$accountId.dkr.ecr.$region.amazonaws.com"
+aws ecr get-login-password --region $region | docker login --username AWS --password-stdin $registry
+powershell -ExecutionPolicy Bypass -File scripts\build_week2_images.ps1 -Registry $registry -Push
+```
+
+The default prediction image uses ARIMA/EMA fallbacks so it can build reliably for pilot deployment. To include the optional Prophet/LSTM dependencies, build the prediction image with:
+
+```powershell
+docker build --build-arg INSTALL_ML_EXTRAS=true -t scaleguard-prediction:ml -f prediction_engine/Dockerfile .
+```
 
 ## Pilot deployment flow
 
@@ -45,6 +72,7 @@ Required Terraform inputs live in:
    - `api_gateway`
    - `ingestion_service`
    - `prediction_engine`
+   - `worker_cluster`
    - `autoscaler`
 2. Provide image URIs, VPC/subnet IDs, ACM certificate ARN, DB password, and JWT secret to Terraform.
 3. Apply the Terraform stack.
@@ -78,6 +106,23 @@ pytest benchmarks/test_throughput.py::test_throughput_1k_metrics_per_sec -m benc
 The repository includes a dedicated GitHub workflow for this path:
 
 - [.github/workflows/benchmark.yml](/C:/Users/KIIT0001/Desktop/scaleguard-x/.github/workflows/benchmark.yml)
+
+## Week 2 local validation status
+
+Local week-2 validation has been completed and documented in:
+
+- [docs/WEEK2_VALIDATION.md](/C:/Users/KIIT0001/Desktop/scaleguard-x/docs/WEEK2_VALIDATION.md)
+- [benchmarks/results/week2_scaling_events.csv](/C:/Users/KIIT0001/Desktop/scaleguard-x/benchmarks/results/week2_scaling_events.csv)
+
+Terraform planning and ECR push were not run in this workspace because `terraform` and `aws` are not installed locally. Install those tools before running:
+
+```powershell
+cd infrastructure\terraform
+copy terraform.tfvars.example terraform.tfvars
+terraform init
+terraform validate
+terraform plan
+```
 
 ## What is still manual
 

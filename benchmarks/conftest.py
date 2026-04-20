@@ -2,12 +2,13 @@
 Pytest configuration and fixtures for benchmark suite
 """
 
-import pytest
 import asyncio
-import httpx
 import json
-from datetime import datetime
 import logging
+from datetime import datetime, timezone
+
+import httpx
+import pytest
 
 
 # Enable asyncio for all tests
@@ -63,7 +64,7 @@ def save_benchmark_result(benchmark_results_dir):
         with open(filepath, "w") as f:
             # Add metadata
             data["_metadata"] = {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "test_name": name,
                 "version": "1.0",
             }

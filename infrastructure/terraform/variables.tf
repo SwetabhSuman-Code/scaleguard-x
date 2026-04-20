@@ -52,6 +52,11 @@ variable "prediction_image" {
   type        = string
 }
 
+variable "worker_image" {
+  description = "Full image URI for the worker cluster container."
+  type        = string
+}
+
 variable "autoscaler_image" {
   description = "Full image URI for the autoscaler container."
   type        = string
