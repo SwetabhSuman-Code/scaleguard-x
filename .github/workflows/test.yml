@@ -31,7 +31,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install lint tools
-        run: pip install black==24.10.0 ruff==0.8.4 mypy types-redis
+        run: pip install black==24.10.0 ruff==0.8.4 mypy==1.14.1 types-redis
 
       - name: black — format check
         run: black --check --diff .
