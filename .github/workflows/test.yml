@@ -31,7 +31,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install lint tools
-        run: pip install black==24.10.0 ruff==0.8.4
+        run: pip install black==24.10.0 ruff==0.8.4 mypy types-redis
 
       - name: black — format check
         run: black --check --diff .
@@ -39,18 +39,30 @@ jobs:
       - name: ruff — lint
         run: ruff check .
 
-      - name: Python compile check
+      - name: mypy — type check (api_gateway)
         run: |
-          python -m compileall -q \
-            api_gateway \
-            autoscaler \
-            ingestion_service \
-            anomaly_engine \
-            prediction_engine \
-            lib \
-            benchmarks \
-            scripts \
-            tests
+          pip install -r api_gateway/requirements.txt
+          mypy api_gateway/main.py lib/
+
+      - name: mypy — type check (autoscaler)
+        run: |
+          pip install -r autoscaler/requirements.txt
+          mypy autoscaler/main.py
+
+      - name: mypy — type check (ingestion_service)
+        run: |
+          pip install -r ingestion_service/requirements.txt
+          mypy ingestion_service/main.py
+
+      - name: mypy — type check (anomaly_engine)
+        run: |
+          pip install -r anomaly_engine/requirements.txt
+          mypy anomaly_engine/main.py
+
+      - name: mypy — type check (prediction_engine)
+        run: |
+          pip install -r prediction_engine/requirements.txt
+          mypy prediction_engine/main.py
 
   # ── 2. Unit Tests ─────────────────────────────────────────────
   unit-tests:

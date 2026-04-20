@@ -25,7 +25,7 @@ import functools
 import logging
 import time
 from enum import Enum
-from typing import Any, Callable, Optional, Type
+from typing import Any, Callable, Literal, Optional, Type
 
 log = logging.getLogger(__name__)
 
@@ -151,7 +151,7 @@ class CircuitBreaker:
         exc_type: Optional[Type[BaseException]],
         exc_val: Optional[BaseException],
         exc_tb: Any,
-    ) -> bool:
+    ) -> Literal[False]:
         async with self._lock:
             if exc_type is None:
                 self._on_success()
@@ -173,7 +173,7 @@ class CircuitBreaker:
         exc_type: Optional[Type[BaseException]],
         exc_val: Optional[BaseException],
         exc_tb: Any,
-    ) -> bool:
+    ) -> Literal[False]:
         if exc_type is None:
             self._on_success()
         elif issubclass(exc_type, self.expected_exception):
